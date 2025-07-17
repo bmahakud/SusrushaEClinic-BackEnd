@@ -394,6 +394,19 @@ class DoctorStatsView(APIView):
         verified_doctors = DoctorProfile.objects.filter(is_verified=True).count()
         active_doctors = DoctorProfile.objects.filter(is_active=True).count()
         
+        # New doctors this month
+        current_month = timezone.now().month
+        current_year = timezone.now().year
+        new_this_month = DoctorProfile.objects.filter(
+            created_at__year=current_year,
+            created_at__month=current_month
+        ).count()
+        
+        # Average rating
+        avg_rating = DoctorProfile.objects.aggregate(
+            avg_rating=Avg('rating')
+        )['avg_rating'] or 0.0
+        
         # Specialization distribution
         specialization_distribution = dict(
             DoctorProfile.objects.values('specialization').annotate(
@@ -445,8 +458,10 @@ class DoctorStatsView(APIView):
         
         stats_data = {
             'total_doctors': total_doctors,
-            'verified_doctors': verified_doctors,
             'active_doctors': active_doctors,
+            'new_this_month': new_this_month,
+            'avg_rating': avg_rating,
+            'verified_doctors': verified_doctors,
             'specialization_distribution': specialization_distribution,
             'experience_distribution': experience_ranges,
             'average_consultation_fee': avg_fee,

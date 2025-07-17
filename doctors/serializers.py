@@ -178,8 +178,10 @@ class DoctorSearchSerializer(serializers.Serializer):
 class DoctorStatsSerializer(serializers.Serializer):
     """Serializer for doctor statistics"""
     total_doctors = serializers.IntegerField()
-    verified_doctors = serializers.IntegerField()
     active_doctors = serializers.IntegerField()
+    new_this_month = serializers.IntegerField()
+    avg_rating = serializers.DecimalField(max_digits=3, decimal_places=1)
+    verified_doctors = serializers.IntegerField()
     specialization_distribution = serializers.DictField()
     experience_distribution = serializers.DictField()
     average_consultation_fee = serializers.DecimalField(max_digits=10, decimal_places=2)
