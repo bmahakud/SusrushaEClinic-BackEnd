@@ -1,0 +1,391 @@
+{
+  "admin_management_flow": {
+    "description": "Complete API flow for SuperAdmin to manage admin accounts",
+    "base_url": "http://localhost:8000/api",
+    "authentication": {
+      "superadmin_credentials": {
+        "phone": "+919876543210",
+        "role": "superadmin"
+      }
+    },
+    "flow_steps": [
+      {
+        "step": 1,
+        "title": "SuperAdmin Authentication",
+        "description": "SuperAdmin logs in to get access token",
+        "requests": [
+          {
+            "name": "Send OTP to SuperAdmin",
+            "method": "POST",
+            "endpoint": "/auth/send-otp/",
+            "headers": {
+              "Content-Type": "application/json"
+            },
+            "request_body": {
+              "phone": "+919876543210"
+            },
+            "response": {
+              "success": true,
+              "data": {
+                "phone": "+919876543210",
+                "expires_in": 300
+              },
+              "message": "OTP sent successfully",
+              "timestamp": "2024-01-15T10:30:00Z"
+            }
+          },
+          {
+            "name": "Verify OTP and Get Tokens",
+            "method": "POST",
+            "endpoint": "/auth/verify-otp/",
+            "headers": {
+              "Content-Type": "application/json"
+            },
+            "request_body": {
+              "phone": "+919876543210",
+              "otp": "123456"
+            },
+            "response": {
+              "success": true,
+              "data": {
+                "access": "eyJ0eXAiOiJKV1QiLCJhbGciOiJIUzI1NiJ9...",
+                "refresh": "eyJ0eXAiOiJKV1QiLCJhbGciOiJIUzI1NiJ9...",
+                "user": {
+                  "id": "SUP001",
+                  "phone": "+919876543210",
+                  "role": "superadmin",
+                  "name": "Super Admin",
+                  "profile": {}
+                }
+              },
+              "message": "Login successful",
+              "timestamp": "2024-01-15T10:30:00Z"
+            }
+          }
+        ]
+      },
+      {
+        "step": 2,
+        "title": "Get Admin Statistics",
+        "description": "SuperAdmin views admin statistics dashboard",
+        "requests": [
+          {
+            "name": "Get Admin Statistics",
+            "method": "GET",
+            "endpoint": "/auth/superadmin/admins/stats/",
+            "headers": {
+              "Authorization": "Bearer <superadmin_access_token>"
+            },
+            "response": {
+              "success": true,
+              "data": {
+                "total_admins": {
+                  "value": 48,
+                  "change": "+5 from last month"
+                },
+                "active_admins": {
+                  "value": 42,
+                  "change": "+3 from last month"
+                },
+                "new_this_month": {
+                  "value": 8,
+                  "change": "+60% from last month"
+                },
+                "avg_performance": {
+                  "value": "92%",
+                  "change": "+0% from last month"
+                },
+                "admin_performance": [
+                  {
+                    "admin_id": "ADM001",
+                    "admin_name": "John Admin",
+                    "consultations_managed": 150,
+                    "revenue_managed": 75000.00,
+                    "performance_score": 95.5
+                  }
+                ],
+                "top_performers": [
+                  {
+                    "admin_id": "ADM001",
+                    "admin_name": "John Admin",
+                    "performance_score": 95.5
+                  }
+                ]
+              },
+              "message": "Admin statistics retrieved successfully",
+              "timestamp": "2024-01-15T10:30:00Z"
+            }
+          }
+        ]
+      },
+      {
+        "step": 3,
+        "title": "List Admin Accounts",
+        "description": "SuperAdmin views all admin accounts with search and filters",
+        "requests": [
+          {
+            "name": "List All Admin Accounts",
+            "method": "GET",
+            "endpoint": "/auth/superadmin/admins/",
+            "headers": {
+              "Authorization": "Bearer <superadmin_access_token>"
+            },
+            "response": {
+              "success": true,
+              "data": {
+                "admins": [
+                  {
+                    "id": "ADM001",
+                    "name": "John Admin",
+                    "phone": "+919876543211",
+                    "email": "john.admin@example.com",
+                    "is_active": true,
+                    "is_verified": true,
+                    "date_joined": "2024-01-01T10:00:00Z",
+                    "last_login": "2024-01-15T09:30:00Z",
+                    "profile_picture": null
+                  }
+                ],
+                "pagination": {
+                  "page": 1,
+                  "page_size": 20,
+                  "total_count": 48,
+                  "total_pages": 3,
+                  "has_next": true,
+                  "has_previous": false
+                }
+              },
+              "message": "Admin accounts retrieved successfully",
+              "timestamp": "2024-01-15T10:30:00Z"
+            }
+          },
+          {
+            "name": "Search Admin Accounts",
+            "method": "GET",
+            "endpoint": "/auth/superadmin/admins/?search=john&status=active&sort_by=name&sort_order=asc&page=1&page_size=10",
+            "headers": {
+              "Authorization": "Bearer <superadmin_access_token>"
+            },
+            "response": {
+              "success": true,
+              "data": {
+                "admins": [
+                  {
+                    "id": "ADM001",
+                    "name": "John Admin",
+                    "phone": "+919876543211",
+                    "email": "john.admin@example.com",
+                    "is_active": true,
+                    "is_verified": true,
+                    "date_joined": "2024-01-01T10:00:00Z",
+                    "last_login": "2024-01-15T09:30:00Z",
+                    "profile_picture": null
+                  }
+                ],
+                "pagination": {
+                  "page": 1,
+                  "page_size": 10,
+                  "total_count": 1,
+                  "total_pages": 1,
+                  "has_next": false,
+                  "has_previous": false
+                }
+              },
+              "message": "Admin accounts retrieved successfully",
+              "timestamp": "2024-01-15T10:30:00Z"
+            }
+          }
+        ]
+      },
+      {
+        "step": 4,
+        "title": "Create New Admin Account",
+        "description": "SuperAdmin creates a new admin account",
+        "requests": [
+          {
+            "name": "Create New Admin Account",
+            "method": "POST",
+            "endpoint": "/auth/superadmin/admins/",
+            "headers": {
+              "Authorization": "Bearer <superadmin_access_token>",
+              "Content-Type": "application/json"
+            },
+            "request_body": {
+              "phone": "+919876543212",
+              "name": "Jane Admin",
+              "email": "jane.admin@example.com",
+              "password": "securepass123",
+              "is_active": true
+            },
+            "response": {
+              "success": true,
+              "data": {
+                "user_id": "ADM049",
+                "phone": "+919876543212",
+                "name": "Jane Admin",
+                "role": "admin",
+                "email": "jane.admin@example.com",
+                "is_active": true,
+                "password": "securepass123",
+                "date_joined": "2024-01-15T10:30:00Z"
+              },
+              "message": "Admin account created successfully",
+              "timestamp": "2024-01-15T10:30:00Z"
+            }
+          }
+        ]
+      },
+      {
+        "step": 5,
+        "title": "Get Admin Account Details",
+        "description": "SuperAdmin views detailed information about a specific admin",
+        "requests": [
+          {
+            "name": "Get Admin Account Details",
+            "method": "GET",
+            "endpoint": "/auth/superadmin/admins/ADM001/",
+            "headers": {
+              "Authorization": "Bearer <superadmin_access_token>"
+            },
+            "response": {
+              "success": true,
+              "data": {
+                "id": "ADM001",
+                "name": "John Admin",
+                "phone": "+919876543211",
+                "email": "john.admin@example.com",
+                "is_active": true,
+                "is_verified": true,
+                "date_joined": "2024-01-01T10:00:00Z",
+                "last_login": "2024-01-15T09:30:00Z",
+                "profile_picture": null,
+                "address": {
+                  "street": "123 Admin Street",
+                  "city": "Mumbai",
+                  "state": "Maharashtra",
+                  "pincode": "400001",
+                  "country": "India"
+                },
+                "performance_metrics": {
+                  "total_consultations_managed": 150,
+                  "total_revenue_managed": 75000.00,
+                  "last_activity": "2024-01-15T09:30:00Z"
+                },
+                "recent_activity": [
+                  {
+                    "activity_type": "login",
+                    "description": "User logged in",
+                    "timestamp": "2024-01-15T09:30:00Z"
+                  }
+                ]
+              },
+              "message": "Admin details retrieved successfully",
+              "timestamp": "2024-01-15T10:30:00Z"
+            }
+          }
+        ]
+      },
+      {
+        "step": 6,
+        "title": "Update Admin Account",
+        "description": "SuperAdmin updates admin account information",
+        "requests": [
+          {
+            "name": "Update Admin Account",
+            "method": "PUT",
+            "endpoint": "/auth/superadmin/admins/ADM001/",
+            "headers": {
+              "Authorization": "Bearer <superadmin_access_token>",
+              "Content-Type": "application/json"
+            },
+            "request_body": {
+              "name": "John Updated Admin",
+              "email": "john.updated@example.com",
+              "is_active": true,
+              "street": "456 Updated Street",
+              "city": "Delhi",
+              "state": "Delhi",
+              "pincode": "110001",
+              "country": "India"
+            },
+            "response": {
+              "success": true,
+              "data": {
+                "id": "ADM001",
+                "name": "John Updated Admin",
+                "phone": "+919876543211",
+                "email": "john.updated@example.com",
+                "is_active": true,
+                "street": "456 Updated Street",
+                "city": "Delhi",
+                "state": "Delhi",
+                "pincode": "110001",
+                "country": "India"
+              },
+              "message": "Admin account updated successfully",
+              "timestamp": "2024-01-15T10:30:00Z"
+            }
+          }
+        ]
+      },
+      {
+        "step": 7,
+        "title": "Deactivate Admin Account",
+        "description": "SuperAdmin deactivates an admin account (soft delete)",
+        "requests": [
+          {
+            "name": "Deactivate Admin Account",
+            "method": "DELETE",
+            "endpoint": "/auth/superadmin/admins/ADM002/",
+            "headers": {
+              "Authorization": "Bearer <superadmin_access_token>"
+            },
+            "response": {
+              "success": true,
+              "message": "Admin account deactivated successfully",
+              "timestamp": "2024-01-15T10:30:00Z"
+            }
+          }
+        ]
+      }
+    ],
+    "api_endpoints_summary": {
+      "authentication": {
+        "POST /api/auth/send-otp/": "Send OTP to SuperAdmin",
+        "POST /api/auth/verify-otp/": "Verify OTP and get JWT tokens"
+      },
+      "admin_management": {
+        "GET /api/auth/superadmin/admins/stats/": "Get admin statistics and analytics",
+        "GET /api/auth/superadmin/admins/": "List all admin accounts with search/filters",
+        "POST /api/auth/superadmin/admins/": "Create new admin account",
+        "GET /api/auth/superadmin/admins/{admin_id}/": "Get specific admin details",
+        "PUT /api/auth/superadmin/admins/{admin_id}/": "Update admin account",
+        "DELETE /api/auth/superadmin/admins/{admin_id}/": "Deactivate admin account"
+      }
+    },
+    "query_parameters": {
+      "search": "Search by name, phone, or email",
+      "status": "Filter by status: active, inactive, all",
+      "sort_by": "Sort by: name, date_joined, last_login",
+      "sort_order": "Sort order: asc, desc",
+      "page": "Page number for pagination",
+      "page_size": "Items per page (default: 20)"
+    },
+    "statistics_metrics": {
+      "total_admins": "Total number of admin accounts",
+      "active_admins": "Number of active admin accounts",
+      "new_this_month": "New admin accounts created this month",
+      "avg_performance": "Average performance score of all admins",
+      "admin_performance": "Detailed performance metrics for each admin",
+      "top_performers": "Top 5 performing admins"
+    },
+    "error_codes": {
+      "PERMISSION_DENIED": "Only SuperAdmin can access this endpoint",
+      "ADMIN_NOT_FOUND": "Admin account not found",
+      "USER_EXISTS": "User with this phone number already exists",
+      "MISSING_FIELD": "Required field is missing",
+      "VALIDATION_ERROR": "Invalid data provided",
+      "SELF_DELETION": "Cannot delete your own account"
+    }
+  }
+} 

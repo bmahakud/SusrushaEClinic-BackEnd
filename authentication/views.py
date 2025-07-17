@@ -9,6 +9,8 @@ from django.contrib.auth import update_session_auth_hash
 from drf_spectacular.utils import extend_schema, OpenApiParameter
 from drf_spectacular.types import OpenApiTypes
 from django.db.models import Q
+from django.db.models import Sum
+from datetime import timedelta
 
 from .models import User, UserSession
 from .serializers import (
@@ -636,6 +638,476 @@ class AdminUserDetailView(APIView):
                 },
                 'timestamp': timezone.now().isoformat()
             }, status=status.HTTP_404_NOT_FOUND)
+
+
+class AdminManagementView(APIView):
+    """Comprehensive admin account management for SuperAdmin"""
+    permission_classes = [permissions.IsAuthenticated]
+    
+    def get_permissions(self):
+        """Only superadmin can access admin management"""
+        if not self.request.user.is_authenticated or getattr(self.request.user, 'role', None) != 'superadmin':
+            return [permissions.IsAdminUser()]
+        return super().get_permissions()
+    
+    @extend_schema(
+        request={
+            'phone': OpenApiTypes.STR,
+            'name': OpenApiTypes.STR,
+            'email': OpenApiTypes.STR,
+            'password': OpenApiTypes.STR,
+            'is_active': OpenApiTypes.BOOL,
+            'permissions': OpenApiTypes.OBJECT,
+        },
+        responses={201: dict, 400: dict, 403: dict},
+        description="Create new admin account (SuperAdmin only)"
+    )
+    def post(self, request):
+        """Create new admin account"""
+        # Validate required fields
+        required_fields = ['phone', 'name']
+        for field in required_fields:
+            if field not in request.data:
+                return Response({
+                    'success': False,
+                    'error': {
+                        'code': 'MISSING_FIELD',
+                        'message': f'Field "{field}" is required'
+                    },
+                    'timestamp': timezone.now().isoformat()
+                }, status=status.HTTP_400_BAD_REQUEST)
+        
+        # Check if user already exists
+        if User.objects.filter(phone=request.data['phone']).exists():
+            return Response({
+                'success': False,
+                'error': {
+                    'code': 'USER_EXISTS',
+                    'message': 'User with this phone number already exists'
+                },
+                'timestamp': timezone.now().isoformat()
+            }, status=status.HTTP_400_BAD_REQUEST)
+        
+        try:
+            # Create admin user
+            user_data = {
+                'phone': request.data['phone'],
+                'name': request.data['name'],
+                'role': 'admin',  # Always create as admin
+                'email': request.data.get('email', ''),
+                'is_verified': True,  # Admin-created users are pre-verified
+                'is_active': request.data.get('is_active', True),
+            }
+            
+            # Set password if provided, otherwise generate random password
+            password = request.data.get('password')
+            if not password:
+                import secrets
+                password = secrets.token_urlsafe(8)
+            
+            user = User.objects.create_user(**user_data)
+            user.set_password(password)
+            user.save()
+            
+            return Response({
+                'success': True,
+                'data': {
+                    'user_id': user.id,
+                    'phone': user.phone,
+                    'name': user.name,
+                    'role': user.role,
+                    'email': user.email,
+                    'is_active': user.is_active,
+                    'password': password if not request.data.get('password') else '***',
+                    'date_joined': user.date_joined.isoformat()
+                },
+                'message': 'Admin account created successfully',
+                'timestamp': timezone.now().isoformat()
+            }, status=status.HTTP_201_CREATED)
+            
+        except Exception as e:
+            return Response({
+                'success': False,
+                'error': {
+                    'code': 'CREATION_ERROR',
+                    'message': f'Error creating admin: {str(e)}'
+                },
+                'timestamp': timezone.now().isoformat()
+            }, status=status.HTTP_400_BAD_REQUEST)
+    
+    @extend_schema(
+        parameters=[
+            OpenApiParameter('search', OpenApiTypes.STR, description='Search by name, phone, or email'),
+            OpenApiParameter('status', OpenApiTypes.STR, description='Filter by status: active, inactive, all'),
+            OpenApiParameter('sort_by', OpenApiTypes.STR, description='Sort by: name, date_joined, last_login'),
+            OpenApiParameter('sort_order', OpenApiTypes.STR, description='Sort order: asc, desc'),
+            OpenApiParameter('page', OpenApiTypes.INT, description='Page number'),
+            OpenApiParameter('page_size', OpenApiTypes.INT, description='Items per page'),
+        ],
+        responses={200: dict},
+        description="List all admin accounts with search and filters (SuperAdmin only)"
+    )
+    def get(self, request):
+        """List all admin accounts with search and filters"""
+        # Get query parameters
+        search_query = request.query_params.get('search', '')
+        status_filter = request.query_params.get('status', 'all')
+        sort_by = request.query_params.get('sort_by', 'date_joined')
+        sort_order = request.query_params.get('sort_order', 'desc')
+        page = int(request.query_params.get('page', 1))
+        page_size = int(request.query_params.get('page_size', 20))
+        
+        # Build queryset
+        queryset = User.objects.filter(role='admin')
+        
+        # Apply status filter
+        if status_filter == 'active':
+            queryset = queryset.filter(is_active=True)
+        elif status_filter == 'inactive':
+            queryset = queryset.filter(is_active=False)
+        
+        # Apply search filter
+        if search_query:
+            queryset = queryset.filter(
+                Q(name__icontains=search_query) |
+                Q(phone__icontains=search_query) |
+                Q(email__icontains=search_query)
+            )
+        
+        # Apply sorting
+        if sort_by in ['name', 'date_joined', 'last_login']:
+            order_field = sort_by
+            if sort_order == 'desc':
+                order_field = f'-{order_field}'
+            queryset = queryset.order_by(order_field)
+        else:
+            queryset = queryset.order_by('-date_joined')
+        
+        # Pagination
+        total_count = queryset.count()
+        start = (page - 1) * page_size
+        end = start + page_size
+        admins = queryset[start:end]
+        
+        # Serialize data
+        admin_data = []
+        for admin in admins:
+            admin_data.append({
+                'id': admin.id,
+                'name': admin.name,
+                'phone': admin.phone,
+                'email': admin.email,
+                'is_active': admin.is_active,
+                'is_verified': admin.is_verified,
+                'date_joined': admin.date_joined.isoformat(),
+                'last_login': admin.last_login.isoformat() if admin.last_login else None,
+                'profile_picture': admin.profile_picture.url if admin.profile_picture else None,
+            })
+        
+        return Response({
+            'success': True,
+            'data': {
+                'admins': admin_data,
+                'pagination': {
+                    'page': page,
+                    'page_size': page_size,
+                    'total_count': total_count,
+                    'total_pages': (total_count + page_size - 1) // page_size,
+                    'has_next': end < total_count,
+                    'has_previous': page > 1
+                }
+            },
+            'message': 'Admin accounts retrieved successfully',
+            'timestamp': timezone.now().isoformat()
+        }, status=status.HTTP_200_OK)
+
+
+class AdminDetailView(APIView):
+    """Admin account detail management for SuperAdmin"""
+    permission_classes = [permissions.IsAuthenticated]
+    
+    def get_permissions(self):
+        """Only superadmin can access admin management"""
+        if not self.request.user.is_authenticated or getattr(self.request.user, 'role', None) != 'superadmin':
+            return [permissions.IsAdminUser()]
+        return super().get_permissions()
+    
+    @extend_schema(
+        responses={200: dict, 404: dict},
+        description="Get specific admin account details (SuperAdmin only)"
+    )
+    def get(self, request, admin_id):
+        """Get specific admin account details"""
+        try:
+            admin = User.objects.get(id=admin_id, role='admin')
+            
+            # Get additional statistics for this admin
+            from consultations.models import Consultation
+            from payments.models import Payment
+            
+            # Admin performance metrics
+            total_consultations_managed = Consultation.objects.filter(
+                created_by=admin
+            ).count()
+            
+            total_revenue_managed = Payment.objects.filter(
+                status='completed',
+                consultation__created_by=admin
+            ).aggregate(total=Sum('amount'))['total'] or 0
+            
+            # Recent activity
+            from analytics.models import UserActivityLog
+            recent_activity = UserActivityLog.objects.filter(
+                user=admin
+            ).order_by('-timestamp')[:10]
+            
+            admin_data = {
+                'id': admin.id,
+                'name': admin.name,
+                'phone': admin.phone,
+                'email': admin.email,
+                'is_active': admin.is_active,
+                'is_verified': admin.is_verified,
+                'date_joined': admin.date_joined.isoformat(),
+                'last_login': admin.last_login.isoformat() if admin.last_login else None,
+                'profile_picture': admin.profile_picture.url if admin.profile_picture else None,
+                'address': {
+                    'street': admin.street,
+                    'city': admin.city,
+                    'state': admin.state,
+                    'pincode': admin.pincode,
+                    'country': admin.country,
+                },
+                'performance_metrics': {
+                    'total_consultations_managed': total_consultations_managed,
+                    'total_revenue_managed': float(total_revenue_managed),
+                    'last_activity': recent_activity[0].timestamp.isoformat() if recent_activity else None,
+                },
+                'recent_activity': [
+                    {
+                        'activity_type': activity.activity_type,
+                        'description': activity.description,
+                        'timestamp': activity.timestamp.isoformat()
+                    } for activity in recent_activity
+                ]
+            }
+            
+            return Response({
+                'success': True,
+                'data': admin_data,
+                'message': 'Admin details retrieved successfully',
+                'timestamp': timezone.now().isoformat()
+            }, status=status.HTTP_200_OK)
+            
+        except User.DoesNotExist:
+            return Response({
+                'success': False,
+                'error': {
+                    'code': 'ADMIN_NOT_FOUND',
+                    'message': 'Admin account not found'
+                },
+                'timestamp': timezone.now().isoformat()
+            }, status=status.HTTP_404_NOT_FOUND)
+    
+    @extend_schema(
+        request={
+            'name': OpenApiTypes.STR,
+            'email': OpenApiTypes.STR,
+            'is_active': OpenApiTypes.BOOL,
+            'street': OpenApiTypes.STR,
+            'city': OpenApiTypes.STR,
+            'state': OpenApiTypes.STR,
+            'pincode': OpenApiTypes.STR,
+            'country': OpenApiTypes.STR,
+        },
+        responses={200: dict, 400: dict, 404: dict},
+        description="Update admin account details (SuperAdmin only)"
+    )
+    def put(self, request, admin_id):
+        """Update admin account details"""
+        try:
+            admin = User.objects.get(id=admin_id, role='admin')
+            serializer = UpdateProfileSerializer(admin, data=request.data, partial=True)
+            
+            if serializer.is_valid():
+                serializer.save()
+                
+                return Response({
+                    'success': True,
+                    'data': serializer.data,
+                    'message': 'Admin account updated successfully',
+                    'timestamp': timezone.now().isoformat()
+                }, status=status.HTTP_200_OK)
+            
+            return Response({
+                'success': False,
+                'error': {
+                    'code': 'VALIDATION_ERROR',
+                    'message': 'Invalid data provided',
+                    'details': serializer.errors
+                },
+                'timestamp': timezone.now().isoformat()
+            }, status=status.HTTP_400_BAD_REQUEST)
+            
+        except User.DoesNotExist:
+            return Response({
+                'success': False,
+                'error': {
+                    'code': 'ADMIN_NOT_FOUND',
+                    'message': 'Admin account not found'
+                },
+                'timestamp': timezone.now().isoformat()
+            }, status=status.HTTP_404_NOT_FOUND)
+    
+    @extend_schema(
+        responses={200: dict, 404: dict},
+        description="Delete admin account (SuperAdmin only)"
+    )
+    def delete(self, request, admin_id):
+        """Delete admin account"""
+        try:
+            admin = User.objects.get(id=admin_id, role='admin')
+            
+            # Prevent deletion of the current user
+            if admin == request.user:
+                return Response({
+                    'success': False,
+                    'error': {
+                        'code': 'SELF_DELETION',
+                        'message': 'Cannot delete your own account'
+                    },
+                    'timestamp': timezone.now().isoformat()
+                }, status=status.HTTP_400_BAD_REQUEST)
+            
+            # Soft delete - set as inactive instead of hard delete
+            admin.is_active = False
+            admin.save()
+            
+            return Response({
+                'success': True,
+                'message': 'Admin account deactivated successfully',
+                'timestamp': timezone.now().isoformat()
+            }, status=status.HTTP_200_OK)
+            
+        except User.DoesNotExist:
+            return Response({
+                'success': False,
+                'error': {
+                    'code': 'ADMIN_NOT_FOUND',
+                    'message': 'Admin account not found'
+                },
+                'timestamp': timezone.now().isoformat()
+            }, status=status.HTTP_404_NOT_FOUND)
+
+
+class AdminStatsView(APIView):
+    """Admin statistics and analytics for SuperAdmin"""
+    permission_classes = [permissions.IsAuthenticated]
+    
+    def get_permissions(self):
+        """Only superadmin can access admin statistics"""
+        if not self.request.user.is_authenticated or getattr(self.request.user, 'role', None) != 'superadmin':
+            return [permissions.IsAdminUser()]
+        return super().get_permissions()
+    
+    @extend_schema(
+        responses={200: dict},
+        description="Get admin statistics and analytics (SuperAdmin only)"
+    )
+    def get(self, request):
+        """Get admin statistics and analytics"""
+        today = timezone.now().date()
+        this_month_start = today.replace(day=1)
+        last_month_start = (this_month_start - timedelta(days=1)).replace(day=1)
+        
+        # Calculate admin statistics
+        total_admins = User.objects.filter(role='admin').count()
+        active_admins = User.objects.filter(role='admin', is_active=True).count()
+        new_this_month = User.objects.filter(
+            role='admin',
+            date_joined__gte=this_month_start
+        ).count()
+        
+        # Calculate changes from last month
+        last_month_admins = User.objects.filter(
+            role='admin',
+            date_joined__gte=last_month_start,
+            date_joined__lt=this_month_start
+        ).count()
+        
+        # Calculate performance metrics (simplified for now)
+        # Since consultations don't have a created_by field, we'll use basic metrics
+        admin_performance = []
+        admins = User.objects.filter(role='admin', is_active=True)
+        
+        for admin in admins:
+            # For now, use a simple performance score based on account age and activity
+            days_since_joined = (timezone.now().date() - admin.date_joined.date()).days
+            activity_score = min(100, max(0, 50 + (days_since_joined * 0.5)))  # Basic scoring
+            
+            admin_performance.append({
+                'admin_id': admin.id,
+                'admin_name': admin.name,
+                'days_active': days_since_joined,
+                'performance_score': round(activity_score, 1)
+            })
+        
+        # Calculate average performance
+        avg_performance = 0
+        if admin_performance:
+            avg_performance = sum(p['performance_score'] for p in admin_performance) / len(admin_performance)
+        
+        # Calculate growth rates
+        total_admins_last_month = User.objects.filter(
+            role='admin',
+            date_joined__lt=this_month_start
+        ).count()
+        
+        admin_growth_rate = 0
+        if total_admins_last_month > 0:
+            admin_growth_rate = ((total_admins - total_admins_last_month) / total_admins_last_month) * 100
+        
+        active_growth_rate = 0
+        active_admins_last_month = User.objects.filter(
+            role='admin',
+            is_active=True,
+            date_joined__lt=this_month_start
+        ).count()
+        
+        if active_admins_last_month > 0:
+            active_growth_rate = ((active_admins - active_admins_last_month) / active_admins_last_month) * 100
+        
+        new_month_growth_rate = 0
+        if last_month_admins > 0:
+            new_month_growth_rate = ((new_this_month - last_month_admins) / last_month_admins) * 100
+        
+        stats_data = {
+            'total_admins': {
+                'value': total_admins,
+                'change': f"{'+' if admin_growth_rate >= 0 else ''}{admin_growth_rate:.1f}% from last month"
+            },
+            'active_admins': {
+                'value': active_admins,
+                'change': f"{'+' if active_growth_rate >= 0 else ''}{active_growth_rate:.1f}% from last month"
+            },
+            'new_this_month': {
+                'value': new_this_month,
+                'change': f"{'+' if new_month_growth_rate >= 0 else ''}{new_month_growth_rate:.1f}% from last month"
+            },
+            'avg_performance': {
+                'value': f"{avg_performance:.1f}%",
+                'change': '+0% from last month'  # Could calculate this if needed
+            },
+            'admin_performance': admin_performance,
+            'top_performers': sorted(admin_performance, key=lambda x: x['performance_score'], reverse=True)[:5]
+        }
+        
+        return Response({
+            'success': True,
+            'data': stats_data,
+            'message': 'Admin statistics retrieved successfully',
+            'timestamp': timezone.now().isoformat()
+        }, status=status.HTTP_200_OK)
 
 
 @api_view(['GET'])

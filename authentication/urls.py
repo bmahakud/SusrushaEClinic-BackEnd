@@ -26,5 +26,10 @@ urlpatterns = [
     # Admin user management (Admin/SuperAdmin only)
     path('admin/users/', views.AdminUserManagementView.as_view(), name='admin_users'),
     path('admin/users/<str:user_id>/', views.AdminUserDetailView.as_view(), name='admin_user_detail'),
+    
+    # SuperAdmin admin management (SuperAdmin only)
+    path('superadmin/admins/', views.AdminManagementView.as_view(), name='admin_management'),
+    path('superadmin/admins/stats/', views.AdminStatsView.as_view(), name='admin_stats'),
+    path('superadmin/admins/<str:admin_id>/', views.AdminDetailView.as_view(), name='admin_detail'),
 ]
 
