@@ -1,0 +1,665 @@
+{
+  "doctor_management_flow": {
+    "description": "Complete API flow for doctor account creation and management",
+    "base_url": "http://localhost:8000/api",
+    "authentication": {
+      "admin_credentials": {
+        "phone": "+919876543210",
+        "role": "admin"
+      },
+      "doctor_credentials": {
+        "phone": "+919876543211",
+        "role": "doctor"
+      }
+    },
+    "flow_steps": [
+      {
+        "step": 1,
+        "title": "Admin Authentication",
+        "description": "Admin logs in to get access token",
+        "requests": [
+          {
+            "name": "Send OTP to Admin",
+            "method": "POST",
+            "endpoint": "/auth/send-otp/",
+            "headers": {
+              "Content-Type": "application/json"
+            },
+            "request_body": {
+              "phone": "+919876543210"
+            },
+            "response": {
+              "success": true,
+              "data": {
+                "phone": "+919876543210",
+                "expires_in": 300
+              },
+              "message": "OTP sent successfully",
+              "timestamp": "2024-01-15T10:30:00Z"
+            }
+          },
+          {
+            "name": "Verify OTP and Get Admin Token",
+            "method": "POST",
+            "endpoint": "/auth/verify-otp/",
+            "headers": {
+              "Content-Type": "application/json"
+            },
+            "request_body": {
+              "phone": "+919876543210",
+              "otp": "123456"
+            },
+            "response": {
+              "success": true,
+              "data": {
+                "access": "eyJ0eXAiOiJKV1QiLCJhbGciOiJIUzI1NiJ9...",
+                "refresh": "eyJ0eXAiOiJKV1QiLCJhbGciOiJIUzI1NiJ9...",
+                "user": {
+                  "id": "ADM001",
+                  "phone": "+919876543210",
+                  "role": "admin",
+                  "name": "Admin User"
+                }
+              },
+              "message": "Login successful",
+              "timestamp": "2024-01-15T10:30:00Z"
+            }
+          }
+        ]
+      },
+      {
+        "step": 2,
+        "title": "Create Doctor Account",
+        "description": "Admin creates doctor user account",
+        "requests": [
+          {
+            "name": "Create Doctor User Account",
+            "method": "POST",
+            "endpoint": "/auth/admin/users/",
+            "headers": {
+              "Authorization": "Bearer <admin_access_token>",
+              "Content-Type": "application/json"
+            },
+            "request_body": {
+              "phone": "+919876543211",
+              "name": "Dr. John Smith",
+              "email": "dr.john@example.com",
+              "role": "doctor"
+            },
+            "response": {
+              "success": true,
+              "data": {
+                "user_id": "DOC001",
+                "phone": "+919876543211",
+                "name": "Dr. John Smith",
+                "role": "doctor",
+                "email": "dr.john@example.com",
+                "password": "aB3xK9mP"
+              },
+              "message": "Doctor account created successfully",
+              "timestamp": "2024-01-15T10:30:00Z"
+            }
+          }
+        ]
+      },
+      {
+        "step": 3,
+        "title": "Create Doctor Profile",
+        "description": "Admin creates doctor profile with credentials",
+        "requests": [
+          {
+            "name": "Create Doctor Profile",
+            "method": "POST",
+            "endpoint": "/admin/doctors/",
+            "headers": {
+              "Authorization": "Bearer <admin_access_token>",
+              "Content-Type": "application/json"
+            },
+            "request_body": {
+              "user": "DOC001",
+              "license_number": "MED123456",
+              "qualification": "MBBS, MD (Cardiology)",
+              "specialization": "Cardiology",
+              "sub_specialization": "Interventional Cardiology",
+              "consultation_fee": 1500.00,
+              "online_consultation_fee": 1200.00,
+              "experience_years": 8,
+              "clinic_name": "Heart Care Clinic",
+              "clinic_address": "123 Medical Center, City, State - 123456",
+              "bio": "Experienced cardiologist with expertise in interventional procedures",
+              "languages_spoken": ["English", "Hindi"],
+              "consultation_duration": 30,
+              "is_online_consultation_available": true
+            },
+            "response": {
+              "success": true,
+              "data": {
+                "id": 1,
+                "user": "DOC001",
+                "license_number": "MED123456",
+                "qualification": "MBBS, MD (Cardiology)",
+                "specialization": "Cardiology",
+                "sub_specialization": "Interventional Cardiology",
+                "consultation_fee": "1500.00",
+                "online_consultation_fee": "1200.00",
+                "experience_years": 8,
+                "clinic_name": "Heart Care Clinic",
+                "clinic_address": "123 Medical Center, City, State - 123456",
+                "bio": "Experienced cardiologist with expertise in interventional procedures",
+                "languages_spoken": ["English", "Hindi"],
+                "consultation_duration": 30,
+                "is_online_consultation_available": true,
+                "is_verified": false,
+                "is_active": true,
+                "rating": 0.0,
+                "total_reviews": 0,
+                "created_at": "2024-01-15T10:30:00Z"
+              },
+              "message": "Doctor profile created successfully",
+              "timestamp": "2024-01-15T10:30:00Z"
+            }
+          }
+        ]
+      },
+      {
+        "step": 4,
+        "title": "Doctor Authentication",
+        "description": "Doctor logs in with provided credentials",
+        "requests": [
+          {
+            "name": "Send OTP to Doctor",
+            "method": "POST",
+            "endpoint": "/auth/send-otp/",
+            "headers": {
+              "Content-Type": "application/json"
+            },
+            "request_body": {
+              "phone": "+919876543211"
+            },
+            "response": {
+              "success": true,
+              "data": {
+                "phone": "+919876543211",
+                "expires_in": 300
+              },
+              "message": "OTP sent successfully",
+              "timestamp": "2024-01-15T10:30:00Z"
+            }
+          },
+          {
+            "name": "Doctor Login Verification",
+            "method": "POST",
+            "endpoint": "/auth/verify-otp/",
+            "headers": {
+              "Content-Type": "application/json"
+            },
+            "request_body": {
+              "phone": "+919876543211",
+              "otp": "654321"
+            },
+            "response": {
+              "success": true,
+              "data": {
+                "access": "eyJ0eXAiOiJKV1QiLCJhbGciOiJIUzI1NiJ9...",
+                "refresh": "eyJ0eXAiOiJKV1QiLCJhbGciOiJIUzI1NiJ9...",
+                "user": {
+                  "id": "DOC001",
+                  "phone": "+919876543211",
+                  "role": "doctor",
+                  "name": "Dr. John Smith",
+                  "profile": {
+                    "license_number": "MED123456",
+                    "qualification": "MBBS, MD (Cardiology)",
+                    "specialization": "Cardiology",
+                    "consultation_fee": 1500.00,
+                    "rating": 0.0,
+                    "total_consultations": 0
+                  }
+                }
+              },
+              "message": "Login successful",
+              "timestamp": "2024-01-15T10:30:00Z"
+            }
+          }
+        ]
+      },
+      {
+        "step": 5,
+        "title": "Doctor Profile Completion",
+        "description": "Doctor completes personal and professional profile",
+        "requests": [
+          {
+            "name": "Update Personal Profile",
+            "method": "PUT",
+            "endpoint": "/auth/profile/",
+            "headers": {
+              "Authorization": "Bearer <doctor_access_token>",
+              "Content-Type": "application/json"
+            },
+            "request_body": {
+              "date_of_birth": "1985-06-15",
+              "gender": "male",
+              "street": "456 Doctor Lane",
+              "city": "Mumbai",
+              "state": "Maharashtra",
+              "pincode": "400001",
+              "emergency_contact_name": "Mrs. Smith",
+              "emergency_contact_phone": "+919876543212",
+              "emergency_contact_relationship": "Spouse"
+            },
+            "response": {
+              "success": true,
+              "data": {
+                "id": "DOC001",
+                "phone": "+919876543211",
+                "name": "Dr. John Smith",
+                "email": "dr.john@example.com",
+                "role": "doctor",
+                "date_of_birth": "1985-06-15",
+                "gender": "male",
+                "street": "456 Doctor Lane",
+                "city": "Mumbai",
+                "state": "Maharashtra",
+                "pincode": "400001",
+                "emergency_contact_name": "Mrs. Smith",
+                "emergency_contact_phone": "+919876543212",
+                "emergency_contact_relationship": "Spouse"
+              },
+              "message": "Profile updated successfully",
+              "timestamp": "2024-01-15T10:30:00Z"
+            }
+          },
+          {
+            "name": "Update Doctor Profile",
+            "method": "PUT",
+            "endpoint": "/admin/doctors/DOC001/",
+            "headers": {
+              "Authorization": "Bearer <doctor_access_token>",
+              "Content-Type": "application/json"
+            },
+            "request_body": {
+              "bio": "Experienced cardiologist with 8+ years of experience in interventional cardiology. Specialized in angioplasty, stenting, and cardiac imaging.",
+              "achievements": "Fellowship in Interventional Cardiology, Best Doctor Award 2023",
+              "languages_spoken": ["English", "Hindi", "Marathi"],
+              "consultation_duration": 45,
+              "is_accepting_patients": true
+            },
+            "response": {
+              "success": true,
+              "data": {
+                "id": 1,
+                "user": "DOC001",
+                "bio": "Experienced cardiologist with 8+ years of experience in interventional cardiology. Specialized in angioplasty, stenting, and cardiac imaging.",
+                "achievements": "Fellowship in Interventional Cardiology, Best Doctor Award 2023",
+                "languages_spoken": ["English", "Hindi", "Marathi"],
+                "consultation_duration": 45,
+                "is_accepting_patients": true
+              },
+              "message": "Doctor profile updated successfully",
+              "timestamp": "2024-01-15T10:30:00Z"
+            }
+          }
+        ]
+      },
+      {
+        "step": 6,
+        "title": "Set Doctor Availability",
+        "description": "Doctor sets working hours and availability",
+        "requests": [
+          {
+            "name": "Set Monday Availability",
+            "method": "POST",
+            "endpoint": "/admin/doctors/DOC001/availability/",
+            "headers": {
+              "Authorization": "Bearer <doctor_access_token>",
+              "Content-Type": "application/json"
+            },
+            "request_body": {
+              "day_of_week": "monday",
+              "start_time": "09:00:00",
+              "end_time": "17:00:00",
+              "is_available": true,
+              "max_patients": 20
+            },
+            "response": {
+              "success": true,
+              "data": {
+                "id": 1,
+                "doctor": "DOC001",
+                "day_of_week": "monday",
+                "start_time": "09:00:00",
+                "end_time": "17:00:00",
+                "is_available": true,
+                "max_patients": 20
+              },
+              "message": "Availability set successfully",
+              "timestamp": "2024-01-15T10:30:00Z"
+            }
+          },
+          {
+            "name": "Set Tuesday Availability",
+            "method": "POST",
+            "endpoint": "/admin/doctors/DOC001/availability/",
+            "headers": {
+              "Authorization": "Bearer <doctor_access_token>",
+              "Content-Type": "application/json"
+            },
+            "request_body": {
+              "day_of_week": "tuesday",
+              "start_time": "09:00:00",
+              "end_time": "17:00:00",
+              "is_available": true,
+              "max_patients": 20
+            },
+            "response": {
+              "success": true,
+              "data": {
+                "id": 2,
+                "doctor": "DOC001",
+                "day_of_week": "tuesday",
+                "start_time": "09:00:00",
+                "end_time": "17:00:00",
+                "is_available": true,
+                "max_patients": 20
+              },
+              "message": "Availability set successfully",
+              "timestamp": "2024-01-15T10:30:00Z"
+            }
+          }
+        ]
+      },
+      {
+        "step": 7,
+        "title": "Add Education Records",
+        "description": "Doctor adds educational qualifications",
+        "requests": [
+          {
+            "name": "Add MBBS Education",
+            "method": "POST",
+            "endpoint": "/admin/doctors/DOC001/education/",
+            "headers": {
+              "Authorization": "Bearer <doctor_access_token>",
+              "Content-Type": "application/json"
+            },
+            "request_body": {
+              "degree": "MBBS",
+              "institution": "Mumbai Medical College",
+              "year_completed": 2010,
+              "specialization": "General Medicine"
+            },
+            "response": {
+              "success": true,
+              "data": {
+                "id": 1,
+                "doctor": "DOC001",
+                "degree": "MBBS",
+                "institution": "Mumbai Medical College",
+                "year_completed": 2010,
+                "specialization": "General Medicine"
+              },
+              "message": "Education record added successfully",
+              "timestamp": "2024-01-15T10:30:00Z"
+            }
+          },
+          {
+            "name": "Add MD Education",
+            "method": "POST",
+            "endpoint": "/admin/doctors/DOC001/education/",
+            "headers": {
+              "Authorization": "Bearer <doctor_access_token>",
+              "Content-Type": "application/json"
+            },
+            "request_body": {
+              "degree": "MD",
+              "institution": "AIIMS Delhi",
+              "year_completed": 2015,
+              "specialization": "Cardiology"
+            },
+            "response": {
+              "success": true,
+              "data": {
+                "id": 2,
+                "doctor": "DOC001",
+                "degree": "MD",
+                "institution": "AIIMS Delhi",
+                "year_completed": 2015,
+                "specialization": "Cardiology"
+              },
+              "message": "Education record added successfully",
+              "timestamp": "2024-01-15T10:30:00Z"
+            }
+          }
+        ]
+      },
+      {
+        "step": 8,
+        "title": "Add Experience Records",
+        "description": "Doctor adds work experience",
+        "requests": [
+          {
+            "name": "Add Current Experience",
+            "method": "POST",
+            "endpoint": "/admin/doctors/DOC001/experience/",
+            "headers": {
+              "Authorization": "Bearer <doctor_access_token>",
+              "Content-Type": "application/json"
+            },
+            "request_body": {
+              "position": "Senior Cardiologist",
+              "hospital": "City Heart Hospital",
+              "start_date": "2015-01-01",
+              "end_date": null,
+              "is_current": true,
+              "description": "Leading interventional cardiology procedures"
+            },
+            "response": {
+              "success": true,
+              "data": {
+                "id": 1,
+                "doctor": "DOC001",
+                "position": "Senior Cardiologist",
+                "hospital": "City Heart Hospital",
+                "start_date": "2015-01-01",
+                "end_date": null,
+                "is_current": true,
+                "description": "Leading interventional cardiology procedures"
+              },
+              "message": "Experience record added successfully",
+              "timestamp": "2024-01-15T10:30:00Z"
+            }
+          }
+        ]
+      },
+      {
+        "step": 9,
+        "title": "Admin Verification",
+        "description": "Admin verifies and activates doctor profile",
+        "requests": [
+          {
+            "name": "Verify Doctor Profile",
+            "method": "PUT",
+            "endpoint": "/admin/doctors/DOC001/",
+            "headers": {
+              "Authorization": "Bearer <admin_access_token>",
+              "Content-Type": "application/json"
+            },
+            "request_body": {
+              "is_verified": true,
+              "is_active": true,
+              "is_accepting_patients": true
+            },
+            "response": {
+              "success": true,
+              "data": {
+                "id": 1,
+                "user": "DOC001",
+                "name": "Dr. John Smith",
+                "license_number": "MED123456",
+                "qualification": "MBBS, MD (Cardiology)",
+                "specialization": "Cardiology",
+                "consultation_fee": "1500.00",
+                "rating": 0.0,
+                "total_reviews": 0,
+                "is_verified": true,
+                "is_active": true,
+                "is_accepting_patients": true,
+                "total_consultations": 0
+              },
+              "message": "Doctor profile updated successfully",
+              "timestamp": "2024-01-15T10:30:00Z"
+            }
+          }
+        ]
+      },
+      {
+        "step": 10,
+        "title": "Doctor Goes Live",
+        "description": "Doctor profile is now visible to patients",
+        "requests": [
+          {
+            "name": "Get Doctor Profile (Public)",
+            "method": "GET",
+            "endpoint": "/admin/doctors/DOC001/",
+            "headers": {
+              "Content-Type": "application/json"
+            },
+            "response": {
+              "success": true,
+              "data": {
+                "id": 1,
+                "user": "DOC001",
+                "name": "Dr. John Smith",
+                "license_number": "MED123456",
+                "qualification": "MBBS, MD (Cardiology)",
+                "specialization": "Cardiology",
+                "sub_specialization": "Interventional Cardiology",
+                "consultation_fee": "1500.00",
+                "online_consultation_fee": "1200.00",
+                "experience_years": 8,
+                "clinic_name": "Heart Care Clinic",
+                "clinic_address": "123 Medical Center, City, State - 123456",
+                "bio": "Experienced cardiologist with 8+ years of experience in interventional cardiology. Specialized in angioplasty, stenting, and cardiac imaging.",
+                "languages_spoken": ["English", "Hindi", "Marathi"],
+                "consultation_duration": 45,
+                "is_online_consultation_available": true,
+                "is_verified": true,
+                "is_active": true,
+                "is_accepting_patients": true,
+                "rating": 0.0,
+                "total_reviews": 0,
+                "total_consultations": 0,
+                "created_at": "2024-01-15T10:30:00Z"
+              },
+              "message": "Doctor profile retrieved successfully",
+              "timestamp": "2024-01-15T10:30:00Z"
+            }
+          }
+        ]
+      }
+    ],
+    "additional_endpoints": {
+      "doctor_management": {
+        "list_doctors": {
+          "method": "GET",
+          "endpoint": "/admin/doctors/",
+          "description": "List all doctors"
+        },
+        "search_doctors": {
+          "method": "GET",
+          "endpoint": "/admin/doctors/search/",
+          "description": "Search doctors by specialization, location, etc."
+        },
+        "doctor_stats": {
+          "method": "GET",
+          "endpoint": "/admin/doctors/stats/",
+          "description": "Get doctor statistics"
+        },
+        "get_availability": {
+          "method": "GET",
+          "endpoint": "/admin/doctors/{doctor_id}/availability/",
+          "description": "Get doctor availability schedule"
+        },
+        "get_education": {
+          "method": "GET",
+          "endpoint": "/admin/doctors/{doctor_id}/education/",
+          "description": "Get doctor education records"
+        },
+        "get_experience": {
+          "method": "GET",
+          "endpoint": "/admin/doctors/{doctor_id}/experience/",
+          "description": "Get doctor experience records"
+        }
+      },
+      "admin_management": {
+        "list_users": {
+          "method": "GET",
+          "endpoint": "/auth/admin/users/",
+          "description": "List all users (Admin only)"
+        },
+        "get_user": {
+          "method": "GET",
+          "endpoint": "/auth/admin/users/{user_id}/",
+          "description": "Get specific user details (Admin only)"
+        },
+        "update_user": {
+          "method": "PUT",
+          "endpoint": "/auth/admin/users/{user_id}/",
+          "description": "Update user details (Admin only)"
+        },
+        "delete_user": {
+          "method": "DELETE",
+          "endpoint": "/auth/admin/users/{user_id}/",
+          "description": "Delete user account (Admin only)"
+        }
+      }
+    },
+    "error_responses": {
+      "validation_error": {
+        "success": false,
+        "error": {
+          "code": "VALIDATION_ERROR",
+          "message": "Invalid data provided",
+          "details": {
+            "field_name": ["Error message"]
+          }
+        },
+        "timestamp": "2024-01-15T10:30:00Z"
+      },
+      "permission_denied": {
+        "success": false,
+        "error": {
+          "code": "PERMISSION_DENIED",
+          "message": "Insufficient permissions"
+        },
+        "timestamp": "2024-01-15T10:30:00Z"
+      },
+      "user_not_found": {
+        "success": false,
+        "error": {
+          "code": "USER_NOT_FOUND",
+          "message": "User not found"
+        },
+        "timestamp": "2024-01-15T10:30:00Z"
+      },
+      "invalid_otp": {
+        "success": false,
+        "error": {
+          "code": "INVALID_OTP",
+          "message": "Invalid or expired OTP"
+        },
+        "timestamp": "2024-01-15T10:30:00Z"
+      }
+    },
+    "frontend_implementation_notes": {
+      "authentication": "Store access token in localStorage or secure storage",
+      "token_refresh": "Use refresh token to get new access token when expired",
+      "error_handling": "Handle all error responses and show appropriate messages",
+      "loading_states": "Show loading indicators during API calls",
+      "form_validation": "Validate forms on frontend before sending to API",
+      "file_upload": "Use FormData for file uploads (profile pictures, documents)",
+      "pagination": "Implement pagination for list endpoints",
+      "search_filtering": "Implement search and filtering for doctor lists",
+      "real_time_updates": "Consider WebSocket for real-time updates"
+    }
+  }
+} 
