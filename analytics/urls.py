@@ -14,6 +14,7 @@ urlpatterns = [
     # Dashboard and overview
     path('dashboard/', views.DashboardStatsView.as_view(), name='dashboard-stats'),
     path('real-time/', views.RealTimeMetricsView.as_view(), name='real-time-metrics'),
+    path('superadmin/overview/', views.SuperAdminOverviewStatsView.as_view(), name='superadmin-overview-stats'),
     
     # Specific analytics
     path('user-growth/', views.UserGrowthAnalyticsView.as_view(), name='user-growth'),

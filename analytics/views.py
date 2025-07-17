@@ -130,7 +130,7 @@ class DashboardStatsView(APIView):
         active_users_today = User.objects.filter(last_login__date=today).count()
         consultations_today = Consultation.objects.filter(created_at__date=today).count()
         revenue_today = Payment.objects.filter(
-            status='completed', payment_date__date=today
+            status='completed', completed_at__date=today
         ).aggregate(total=Sum('amount'))['total'] or 0
         
         # Growth metrics (compared to last month)
@@ -139,7 +139,7 @@ class DashboardStatsView(APIView):
         users_last_month = User.objects.filter(created_at__date__lte=last_month).count()
         consultations_last_month = Consultation.objects.filter(created_at__date__lte=last_month).count()
         revenue_last_month = Payment.objects.filter(
-            status='completed', payment_date__date__lte=last_month
+            status='completed', completed_at__date__lte=last_month
         ).aggregate(total=Sum('amount'))['total'] or 0
         
         growth_metrics = {
@@ -659,6 +659,151 @@ class ExportDataView(APIView):
         response = HttpResponse(content_type='application/pdf')
         response['Content-Disposition'] = f'attachment; filename="{params["export_type"]}_export.pdf"'
         return response
+
+
+class SuperAdminOverviewStatsView(APIView):
+    """Get comprehensive platform overview statistics for SuperAdmin"""
+    permission_classes = [permissions.IsAuthenticated]
+    
+    @extend_schema(
+        responses={200: dict},
+        description="Get comprehensive platform overview statistics for SuperAdmin dashboard"
+    )
+    def get(self, request):
+        """Get comprehensive platform overview statistics"""
+        # Check permissions - only SuperAdmin can access
+        if request.user.role != 'superadmin':
+            return Response({
+                'success': False,
+                'error': {
+                    'code': 'PERMISSION_DENIED',
+                    'message': 'Only SuperAdmin can access overview statistics'
+                },
+                'timestamp': timezone.now().isoformat()
+            }, status=status.HTTP_403_FORBIDDEN)
+        
+        today = timezone.now().date()
+        
+        # Import required models
+        from eclinic.models import Clinic
+        from doctors.models import DoctorProfile
+        from patients.models import PatientProfile
+        from consultations.models import Consultation
+        from payments.models import Payment
+        
+        # Calculate comprehensive statistics
+        total_clinics = Clinic.objects.count()
+        active_clinics = Clinic.objects.filter(is_active=True).count()
+        total_doctors = DoctorProfile.objects.count()
+        active_doctors = DoctorProfile.objects.filter(is_active=True).count()
+        total_admins = User.objects.filter(role='admin').count()
+        total_patients = PatientProfile.objects.count()
+        total_consultations = Consultation.objects.count()
+        total_revenue = Payment.objects.filter(status='completed').aggregate(
+            total=Sum('amount')
+        )['total'] or 0
+        
+        # Calculate monthly changes
+        this_month_start = today.replace(day=1)
+        last_month_start = (this_month_start - timedelta(days=1)).replace(day=1)
+        
+        # Clinics
+        this_month_clinics = Clinic.objects.filter(created_at__gte=this_month_start).count()
+        last_month_clinics = Clinic.objects.filter(
+            created_at__gte=last_month_start,
+            created_at__lt=this_month_start
+        ).count()
+        clinic_change = this_month_clinics - last_month_clinics
+        
+        # Doctors
+        this_month_doctors = DoctorProfile.objects.filter(created_at__gte=this_month_start).count()
+        last_month_doctors = DoctorProfile.objects.filter(
+            created_at__gte=last_month_start,
+            created_at__lt=this_month_start
+        ).count()
+        doctor_change = this_month_doctors - last_month_doctors
+        
+        # Admins
+        this_month_admins = User.objects.filter(
+            role='admin', 
+            date_joined__gte=this_month_start
+        ).count()
+        last_month_admins = User.objects.filter(
+            role='admin',
+            date_joined__gte=last_month_start,
+            date_joined__lt=this_month_start
+        ).count()
+        admin_change = this_month_admins - last_month_admins
+        
+        # Patients
+        this_month_patients = PatientProfile.objects.filter(created_at__gte=this_month_start).count()
+        last_month_patients = PatientProfile.objects.filter(
+            created_at__gte=last_month_start,
+            created_at__lt=this_month_start
+        ).count()
+        patient_change = this_month_patients - last_month_patients
+        
+        # Consultations
+        this_month_consultations = Consultation.objects.filter(created_at__gte=this_month_start).count()
+        last_month_consultations = Consultation.objects.filter(
+            created_at__gte=last_month_start,
+            created_at__lt=this_month_start
+        ).count()
+        consultation_change = this_month_consultations - last_month_consultations
+        
+        # Revenue
+        this_month_revenue = Payment.objects.filter(
+            status='completed',
+            completed_at__gte=this_month_start
+        ).aggregate(total=Sum('amount'))['total'] or 0
+        last_month_revenue = Payment.objects.filter(
+            status='completed',
+            completed_at__gte=last_month_start,
+            completed_at__lt=this_month_start
+        ).aggregate(total=Sum('amount'))['total'] or 0
+        revenue_change = float(this_month_revenue) - float(last_month_revenue)
+        
+        stats_data = {
+            'total_clinics': {
+                'value': total_clinics,
+                'change': f"{'+' if clinic_change >= 0 else ''}{clinic_change}"
+            },
+            'active_clinics': {
+                'value': active_clinics,
+                'change': '+0'  # Could calculate this if needed
+            },
+            'total_doctors': {
+                'value': total_doctors,
+                'change': f"{'+' if doctor_change >= 0 else ''}{doctor_change}"
+            },
+            'active_doctors': {
+                'value': active_doctors,
+                'change': '+0'  # Could calculate this if needed
+            },
+            'total_admins': {
+                'value': total_admins,
+                'change': f"{'+' if admin_change >= 0 else ''}{admin_change}"
+            },
+            'total_patients': {
+                'value': total_patients,
+                'change': f"{'+' if patient_change >= 0 else ''}{patient_change}"
+            },
+            'total_consultations': {
+                'value': total_consultations,
+                'change': f"{'+' if consultation_change >= 0 else ''}{consultation_change}"
+            },
+            'total_revenue': {
+                'value': float(total_revenue),
+                'change': f"{'+' if revenue_change >= 0 else ''}{revenue_change:.0f}"
+            }
+        }
+        
+        return Response({
+            'success': True,
+            'data': stats_data,
+            'message': 'Platform overview statistics retrieved successfully',
+            'timestamp': timezone.now().isoformat()
+        }, status=status.HTTP_200_OK)
 
 
 

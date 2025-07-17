@@ -1,7 +1,7 @@
 from django.contrib import admin
 from .models import (
-    DoctorProfile, DoctorSchedule, DoctorAvailability,
-    DoctorEducation, DoctorExperience, DoctorReview, DoctorDocument
+    DoctorProfile, DoctorSchedule,
+    DoctorEducation, DoctorExperience, DoctorReview, DoctorDocument, DoctorSlot
 )
 
 
@@ -61,25 +61,6 @@ class DoctorScheduleAdmin(admin.ModelAdmin):
     ]
     ordering = [
         'doctor__user__name', 'day_of_week', 'start_time'
-    ]
-    readonly_fields = [
-        'created_at', 'updated_at'
-    ]
-
-
-@admin.register(DoctorAvailability)
-class DoctorAvailabilityAdmin(admin.ModelAdmin):
-    list_display = [
-        'doctor', 'date', 'start_time', 'end_time', 'is_available', 'reason'
-    ]
-    list_filter = [
-        'is_available', 'date'
-    ]
-    search_fields = [
-        'doctor__user__name', 'reason'
-    ]
-    ordering = [
-        'doctor__user__name', 'date', 'start_time'
     ]
     readonly_fields = [
         'created_at', 'updated_at'
@@ -160,5 +141,8 @@ class DoctorDocumentAdmin(admin.ModelAdmin):
     readonly_fields = [
         'uploaded_at', 'updated_at'
     ]
+
+
+admin.site.register(DoctorSlot)
 
 

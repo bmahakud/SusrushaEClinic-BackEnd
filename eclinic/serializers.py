@@ -45,6 +45,10 @@ class ClinicCreateSerializer(serializers.ModelSerializer):
         request = self.context.get('request')
         if request and hasattr(request, 'user'):
             validated_data['admin'] = request.user
+        
+        # Auto-verify the clinic when created
+        validated_data['is_verified'] = True
+        
         return super().create(validated_data)
 
 

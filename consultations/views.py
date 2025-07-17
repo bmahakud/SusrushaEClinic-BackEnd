@@ -43,8 +43,8 @@ class ConsultationViewSet(ModelViewSet):
     pagination_class = ConsultationPagination
     filter_backends = [filters.SearchFilter, filters.OrderingFilter]
     search_fields = ['patient__name', 'doctor__name', 'chief_complaint']
-    ordering_fields = ['scheduled_at', 'created_at', 'status']
-    ordering = ['-scheduled_at']
+    ordering_fields = ['scheduled_date', 'scheduled_time', 'created_at', 'status']
+    ordering = ['-scheduled_date', '-scheduled_time']
     
     def get_serializer_class(self):
         """Return appropriate serializer based on action"""

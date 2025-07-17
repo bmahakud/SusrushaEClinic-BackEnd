@@ -8,21 +8,20 @@ from django.utils import timezone
 from django.db.models import Q, Count, Avg, Sum
 from django.shortcuts import get_object_or_404
 from drf_spectacular.utils import extend_schema, OpenApiParameter
-from drf_spectacular.openapi import OpenApiTypes
+from drf_spectacular.types import OpenApiTypes
 from datetime import datetime, timedelta
 
 from authentication.models import User
 from .models import (
     DoctorProfile, DoctorEducation, DoctorExperience, 
-    DoctorDocument, DoctorAvailability, DoctorSchedule, DoctorReview
+    DoctorDocument, DoctorSchedule, DoctorReview, DoctorSlot
 )
 from .serializers import (
     DoctorProfileSerializer, DoctorProfileCreateSerializer,
     DoctorEducationSerializer, DoctorExperienceSerializer,
-    DoctorDocumentSerializer, DoctorAvailabilitySerializer,
-    DoctorScheduleSerializer, DoctorReviewSerializer,
-    DoctorListSerializer, DoctorSearchSerializer, DoctorStatsSerializer,
-    DoctorScheduleCreateSerializer, DoctorAvailabilityCreateSerializer
+    DoctorDocumentSerializer, DoctorScheduleSerializer,
+    DoctorReviewSerializer, DoctorListSerializer, DoctorSearchSerializer,
+    DoctorStatsSerializer, DoctorScheduleCreateSerializer, DoctorSlotSerializer
 )
 
 
@@ -197,22 +196,6 @@ class DoctorDocumentViewSet(ModelViewSet):
         serializer.save(doctor_id=doctor_id, uploaded_by=self.request.user)
 
 
-class DoctorAvailabilityViewSet(ModelViewSet):
-    """ViewSet for doctor availability"""
-    permission_classes = [permissions.IsAuthenticated]
-    
-    def get_queryset(self):
-        """Get availability for specific doctor"""
-        doctor_id = self.kwargs.get('doctor_id')
-        return DoctorAvailability.objects.filter(doctor_id=doctor_id)
-    
-    def get_serializer_class(self):
-        """Return appropriate serializer based on action"""
-        if self.action == 'create':
-            return DoctorAvailabilityCreateSerializer
-        return DoctorAvailabilitySerializer
-
-
 class DoctorScheduleViewSet(ModelViewSet):
     """ViewSet for doctor schedule"""
     permission_classes = [permissions.IsAuthenticated]
@@ -254,6 +237,22 @@ class DoctorReviewViewSet(ModelViewSet):
         """Create review for doctor"""
         doctor_id = self.kwargs.get('doctor_id')
         serializer.save(doctor_id=doctor_id, patient=self.request.user)
+
+
+class DoctorSlotViewSet(ModelViewSet):
+    """ViewSet for doctor slots (multiple slots per day, month view)"""
+    permission_classes = [permissions.IsAuthenticated]
+    serializer_class = DoctorSlotSerializer
+
+    def get_queryset(self):
+        doctor_id = self.kwargs.get('doctor_id')
+        queryset = DoctorSlot.objects.filter(doctor_id=doctor_id)
+        # Optional: filter by month
+        month = self.request.query_params.get('month')
+        year = self.request.query_params.get('year')
+        if month and year:
+            queryset = queryset.filter(date__year=year, date__month=month)
+        return queryset.order_by('date', 'start_time')
 
 
 class DoctorSearchView(APIView):
@@ -462,4 +461,329 @@ class DoctorStatsView(APIView):
             'message': 'Doctor statistics retrieved successfully',
             'timestamp': timezone.now().isoformat()
         }, status=status.HTTP_200_OK)
+
+
+class SuperAdminDoctorManagementView(APIView):
+    """SuperAdmin endpoints for doctor management"""
+    permission_classes = [permissions.IsAuthenticated]
+    
+    def get_permissions(self):
+        """Only superadmin can access"""
+        if not self.request.user.is_authenticated or getattr(self.request.user, 'role', None) != 'superadmin':
+            return [permissions.IsAdminUser()]
+        return super().get_permissions()
+    
+    @extend_schema(
+        parameters=[
+            OpenApiParameter('is_active', OpenApiTypes.BOOL, description='Filter by active status'),
+            OpenApiParameter('is_verified', OpenApiTypes.BOOL, description='Filter by verification status'),
+            OpenApiParameter('specialization', OpenApiTypes.STR, description='Filter by specialization'),
+            OpenApiParameter('search', OpenApiTypes.STR, description='Search by name or license number'),
+        ],
+        responses={200: DoctorListSerializer(many=True)},
+        description="List all doctors (SuperAdmin only)"
+    )
+    def get(self, request):
+        """List all doctors with filtering"""
+        queryset = DoctorProfile.objects.select_related('user').all()
+        
+        # Apply filters
+        is_active = request.query_params.get('is_active')
+        if is_active is not None:
+            queryset = queryset.filter(is_active=is_active.lower() == 'true')
+        
+        is_verified = request.query_params.get('is_verified')
+        if is_verified is not None:
+            queryset = queryset.filter(is_verified=is_verified.lower() == 'true')
+        
+        specialization = request.query_params.get('specialization')
+        if specialization:
+            queryset = queryset.filter(specialization=specialization)
+        
+        search = request.query_params.get('search')
+        if search:
+            queryset = queryset.filter(
+                Q(user__name__icontains=search) |
+                Q(license_number__icontains=search) |
+                Q(specialization__icontains=search)
+            )
+        
+        # Pagination
+        paginator = DoctorPagination()
+        page = paginator.paginate_queryset(queryset, request)
+        
+        if page is not None:
+            serializer = DoctorListSerializer(page, many=True)
+            return paginator.get_paginated_response(serializer.data)
+        
+        serializer = DoctorListSerializer(queryset, many=True)
+        return Response({
+            'success': True,
+            'data': serializer.data,
+            'message': 'Doctors retrieved successfully',
+            'timestamp': timezone.now().isoformat()
+        }, status=status.HTTP_200_OK)
+    
+    @extend_schema(
+        request={
+            'phone': OpenApiTypes.STR,
+            'name': OpenApiTypes.STR,
+            'email': OpenApiTypes.STR,
+            'license_number': OpenApiTypes.STR,
+            'qualification': OpenApiTypes.STR,
+            'specialization': OpenApiTypes.STR,
+            'sub_specialization': OpenApiTypes.STR,
+            'consultation_fee': OpenApiTypes.NUMBER,
+            'online_consultation_fee': OpenApiTypes.NUMBER,
+            'experience_years': OpenApiTypes.INT,
+            'clinic_name': OpenApiTypes.STR,
+            'clinic_address': OpenApiTypes.STR,
+            'bio': OpenApiTypes.STR,
+            'languages_spoken': OpenApiTypes.STR,
+            'consultation_duration': OpenApiTypes.INT,
+            'is_online_consultation_available': OpenApiTypes.BOOL,
+            'is_active': OpenApiTypes.BOOL,
+        },
+        responses={201: DoctorProfileSerializer},
+        description="Create new doctor account and profile (SuperAdmin only)"
+    )
+    def post(self, request):
+        """Create new doctor account and profile"""
+        # Validate required fields
+        required_fields = ['phone', 'name', 'license_number', 'qualification', 'specialization', 'consultation_fee']
+        for field in required_fields:
+            if field not in request.data:
+                return Response({
+                    'success': False,
+                    'error': {
+                        'code': 'MISSING_FIELD',
+                        'message': f'Field "{field}" is required'
+                    },
+                    'timestamp': timezone.now().isoformat()
+                }, status=status.HTTP_400_BAD_REQUEST)
+        
+        # Check if user already exists
+        if User.objects.filter(phone=request.data['phone']).exists():
+            return Response({
+                'success': False,
+                'error': {
+                    'code': 'USER_EXISTS',
+                    'message': 'User with this phone number already exists'
+                },
+                'timestamp': timezone.now().isoformat()
+            }, status=status.HTTP_400_BAD_REQUEST)
+        
+        # Check if license number already exists
+        if DoctorProfile.objects.filter(license_number=request.data['license_number']).exists():
+            return Response({
+                'success': False,
+                'error': {
+                    'code': 'LICENSE_EXISTS',
+                    'message': 'Doctor with this license number already exists'
+                },
+                'timestamp': timezone.now().isoformat()
+            }, status=status.HTTP_400_BAD_REQUEST)
+        
+        try:
+            # Create user account
+            import secrets
+            password = secrets.token_urlsafe(8)
+            
+            user_data = {
+                'phone': request.data['phone'],
+                'name': request.data['name'],
+                'email': request.data.get('email', ''),
+                'role': 'doctor',
+                'is_verified': True,  # SuperAdmin-created doctors are pre-verified
+            }
+            
+            user = User.objects.create_user(**user_data)
+            user.set_password(password)
+            user.save()
+            
+            # Create doctor profile
+            profile_data = {
+                'user': user,
+                'license_number': request.data['license_number'],
+                'qualification': request.data['qualification'],
+                'specialization': request.data['specialization'],
+                'sub_specialization': request.data.get('sub_specialization', ''),
+                'consultation_fee': request.data['consultation_fee'],
+                'online_consultation_fee': request.data.get('online_consultation_fee', request.data['consultation_fee']),
+                'experience_years': request.data.get('experience_years', 0),
+                'clinic_name': request.data.get('clinic_name', ''),
+                'clinic_address': request.data.get('clinic_address', ''),
+                'bio': request.data.get('bio', ''),
+                'languages_spoken': request.data.get('languages_spoken', []),
+                'consultation_duration': request.data.get('consultation_duration', 30),
+                'is_online_consultation_available': request.data.get('is_online_consultation_available', True),
+                'is_verified': True,  # SuperAdmin-created profiles are pre-verified
+                'is_active': request.data.get('is_active', True),
+                'is_accepting_patients': True,
+            }
+            
+            doctor_profile = DoctorProfile.objects.create(**profile_data)
+            
+            serializer = DoctorProfileSerializer(doctor_profile)
+            return Response({
+                'success': True,
+                'data': {
+                    'doctor_profile': serializer.data,
+                    'user_account': {
+                        'user_id': user.id,
+                        'phone': user.phone,
+                        'name': user.name,
+                        'email': user.email,
+                        'role': user.role,
+                        'password': password
+                    }
+                },
+                'message': 'Doctor account and profile created successfully',
+                'timestamp': timezone.now().isoformat()
+            }, status=status.HTTP_201_CREATED)
+            
+        except Exception as e:
+            return Response({
+                'success': False,
+                'error': {
+                    'code': 'CREATION_ERROR',
+                    'message': f'Error creating doctor: {str(e)}'
+                },
+                'timestamp': timezone.now().isoformat()
+            }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+
+
+class SuperAdminDoctorDetailView(APIView):
+    """SuperAdmin endpoints for individual doctor management"""
+    permission_classes = [permissions.IsAuthenticated]
+    
+    def get_permissions(self):
+        """Only superadmin can access"""
+        if not self.request.user.is_authenticated or getattr(self.request.user, 'role', None) != 'superadmin':
+            return [permissions.IsAdminUser()]
+        return super().get_permissions()
+    
+    @extend_schema(
+        responses={200: DoctorProfileSerializer},
+        description="Get doctor details by ID (SuperAdmin only)"
+    )
+    def get(self, request, doctor_id):
+        """Get doctor details by ID"""
+        try:
+            doctor = DoctorProfile.objects.select_related('user').get(id=doctor_id)
+            serializer = DoctorProfileSerializer(doctor)
+            return Response({
+                'success': True,
+                'data': serializer.data,
+                'message': 'Doctor details retrieved successfully',
+                'timestamp': timezone.now().isoformat()
+            }, status=status.HTTP_200_OK)
+        except DoctorProfile.DoesNotExist:
+            return Response({
+                'success': False,
+                'error': {
+                    'code': 'DOCTOR_NOT_FOUND',
+                    'message': 'Doctor not found'
+                },
+                'timestamp': timezone.now().isoformat()
+            }, status=status.HTTP_404_NOT_FOUND)
+    
+    @extend_schema(
+        request=DoctorProfileSerializer,
+        responses={200: DoctorProfileSerializer},
+        description="Update doctor profile (SuperAdmin only)"
+    )
+    def put(self, request, doctor_id):
+        """Update doctor profile"""
+        try:
+            doctor = DoctorProfile.objects.select_related('user').get(id=doctor_id)
+            
+            # Update user fields if present in request
+            user = doctor.user
+            user_updated = False
+            
+            if 'name' in request.data:
+                user.name = request.data['name']
+                user_updated = True
+            if 'phone' in request.data:
+                user.phone = request.data['phone']
+                user_updated = True
+            if 'email' in request.data:
+                user.email = request.data['email']
+                user_updated = True
+            
+            if user_updated:
+                user.save()
+            
+            # Update doctor profile fields
+            serializer = DoctorProfileSerializer(doctor, data=request.data, partial=True)
+            
+            if serializer.is_valid():
+                serializer.save()
+                return Response({
+                    'success': True,
+                    'data': serializer.data,
+                    'message': 'Doctor profile updated successfully',
+                    'timestamp': timezone.now().isoformat()
+                }, status=status.HTTP_200_OK)
+            
+            return Response({
+                'success': False,
+                'error': {
+                    'code': 'VALIDATION_ERROR',
+                    'message': 'Invalid data provided',
+                    'details': serializer.errors
+                },
+                'timestamp': timezone.now().isoformat()
+            }, status=status.HTTP_400_BAD_REQUEST)
+            
+        except DoctorProfile.DoesNotExist:
+            return Response({
+                'success': False,
+                'error': {
+                    'code': 'DOCTOR_NOT_FOUND',
+                    'message': 'Doctor not found'
+                },
+                'timestamp': timezone.now().isoformat()
+            }, status=status.HTTP_404_NOT_FOUND)
+    
+    @extend_schema(
+        responses={200: dict},
+        description="Delete/deactivate doctor (SuperAdmin only)"
+    )
+    def delete(self, request, doctor_id):
+        """Delete/deactivate doctor"""
+        try:
+            doctor = DoctorProfile.objects.get(id=doctor_id)
+            user = doctor.user
+            
+            # Deactivate doctor profile
+            doctor.is_active = False
+            doctor.is_accepting_patients = False
+            doctor.save()
+            
+            # Deactivate user account
+            user.is_active = False
+            user.save()
+            
+            return Response({
+                'success': True,
+                'data': {
+                    'doctor_id': doctor_id,
+                    'user_id': user.id,
+                    'status': 'deactivated'
+                },
+                'message': 'Doctor deactivated successfully',
+                'timestamp': timezone.now().isoformat()
+            }, status=status.HTTP_200_OK)
+            
+        except DoctorProfile.DoesNotExist:
+            return Response({
+                'success': False,
+                'error': {
+                    'code': 'DOCTOR_NOT_FOUND',
+                    'message': 'Doctor not found'
+                },
+                'timestamp': timezone.now().isoformat()
+            }, status=status.HTTP_404_NOT_FOUND)
 

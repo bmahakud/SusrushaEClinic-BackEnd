@@ -7,7 +7,7 @@ from rest_framework_simplejwt.views import TokenRefreshView
 from django.utils import timezone
 from django.contrib.auth import update_session_auth_hash
 from drf_spectacular.utils import extend_schema, OpenApiParameter
-from drf_spectacular.openapi import OpenApiTypes
+from drf_spectacular.types import OpenApiTypes
 from django.db.models import Q
 
 from .models import User, UserSession
@@ -16,7 +16,6 @@ from .serializers import (
     UpdateProfileSerializer, RefreshTokenSerializer, LogoutSerializer,
     ChangePasswordSerializer, UserSessionSerializer
 )
-
 
 class SendOTPView(APIView):
     """Send OTP to user's phone number"""
@@ -469,6 +468,10 @@ class AdminUserManagementView(APIView):
     )
     def get(self, request):
         """List all users"""
+        # Check if this is a request for admin list specifically
+        if request.query_params.get('type') == 'admins':
+            return self.get_admin_list(request)
+        
         role_filter = request.query_params.get('role')
         search_query = request.query_params.get('search')
         
@@ -487,21 +490,36 @@ class AdminUserManagementView(APIView):
             )
         
         # Paginate results
-        page = self.paginate_queryset(queryset)
-        if page is not None:
-            serializer = UserProfileSerializer(page, many=True)
-            return self.get_paginated_response({
-                'success': True,
-                'data': serializer.data,
-                'message': 'Users retrieved successfully',
-                'timestamp': timezone.now().isoformat()
-            })
-        
+        # The original code had pagination here, but UserPagination was removed.
+        # Assuming the intent was to return all users if no pagination is applied.
+        # For now, we'll return all users.
         serializer = UserProfileSerializer(queryset, many=True)
         return Response({
             'success': True,
             'data': serializer.data,
             'message': 'Users retrieved successfully',
+            'timestamp': timezone.now().isoformat()
+        }, status=status.HTTP_200_OK)
+
+    def get_admin_list(self, request):
+        """Get all admin users for e-clinic assignment"""
+        if request.user.role != 'superadmin':
+            return Response({
+                'success': False,
+                'error': {
+                    'code': 'PERMISSION_DENIED',
+                    'message': 'Only SuperAdmin can access admin list'
+                },
+                'timestamp': timezone.now().isoformat()
+            }, status=status.HTTP_403_FORBIDDEN)
+        
+        admins = User.objects.filter(role='admin', is_active=True).order_by('name')
+        serializer = UserProfileSerializer(admins, many=True)
+        
+        return Response({
+            'success': True,
+            'data': serializer.data,
+            'message': 'Admin list retrieved successfully',
             'timestamp': timezone.now().isoformat()
         }, status=status.HTTP_200_OK)
 

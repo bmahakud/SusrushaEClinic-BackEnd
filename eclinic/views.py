@@ -3,13 +3,21 @@ from rest_framework.response import Response
 from rest_framework.views import APIView
 from rest_framework.viewsets import ModelViewSet
 from rest_framework.pagination import PageNumberPagination
+from django_filters.rest_framework import DjangoFilterBackend
 from django.utils import timezone
-from django.db.models import Q
-from .models import Clinic
-from .serializers import ClinicSerializer, ClinicCreateSerializer, ClinicStatsSerializer
-from rest_framework.decorators import action
+from django.db.models import Q, Count, Sum, Avg
 from drf_spectacular.utils import extend_schema, OpenApiParameter
 from drf_spectacular.types import OpenApiTypes
+from datetime import datetime, timedelta
+from rest_framework.decorators import action
+
+from .models import Clinic
+from .serializers import ClinicSerializer, ClinicCreateSerializer
+from .models import ClinicService, ClinicInventory, ClinicAppointment, ClinicReview, ClinicDocument
+from .serializers import ClinicServiceSerializer, ClinicInventorySerializer, ClinicAppointmentSerializer, ClinicReviewSerializer, ClinicDocumentSerializer
+from .serializers import ClinicServiceCreateSerializer, ClinicInventoryCreateSerializer, ClinicAppointmentCreateSerializer, ClinicReviewCreateSerializer, ClinicDocumentCreateSerializer
+from .serializers import ClinicSearchSerializer
+
 
 class ClinicPagination(PageNumberPagination):
     page_size = 20
@@ -20,7 +28,8 @@ class ClinicViewSet(ModelViewSet):
     queryset = Clinic.objects.all()
     permission_classes = [permissions.IsAuthenticated]
     pagination_class = ClinicPagination
-    filter_backends = [filters.SearchFilter, filters.OrderingFilter]
+    filter_backends = [DjangoFilterBackend, filters.SearchFilter, filters.OrderingFilter]
+    filterset_fields = ['city', 'state', 'is_verified', 'is_active']
     search_fields = ['name', 'description', 'city', 'specialties']
     ordering_fields = ['created_at', 'name', 'city']
     ordering = ['-created_at']
@@ -299,87 +308,67 @@ class ClinicSearchView(APIView):
 
 
 class ClinicStatsView(APIView):
-    """Get clinic statistics"""
+    """Get clinic statistics for dashboard"""
     permission_classes = [permissions.IsAuthenticated]
     
     @extend_schema(
-        responses={200: ClinicStatsSerializer},
-        description="Get clinic statistics and analytics"
+        responses={200: dict},
+        description="Get clinic statistics for SuperAdmin dashboard"
     )
     def get(self, request):
-        """Get clinic statistics"""
-        # Check permissions
-        if request.user.role not in ['admin', 'superadmin']:
+        """Get clinic statistics for dashboard"""
+        # Check permissions - only SuperAdmin can access
+        if request.user.role != 'superadmin':
             return Response({
                 'success': False,
                 'error': {
                     'code': 'PERMISSION_DENIED',
-                    'message': 'Insufficient permissions'
+                    'message': 'Only SuperAdmin can access clinic statistics'
                 },
                 'timestamp': timezone.now().isoformat()
             }, status=status.HTTP_403_FORBIDDEN)
         
-        # Calculate statistics
+        # Calculate basic statistics using database queries (efficient)
         total_clinics = Clinic.objects.count()
-        verified_clinics = Clinic.objects.filter(is_verified=True).count()
         active_clinics = Clinic.objects.filter(is_active=True).count()
-        total_appointments = ClinicAppointment.objects.count()
-        total_services = ClinicService.objects.filter(is_available=True).count()
+        online_consultations = Clinic.objects.filter(accepts_online_consultations=True).count()
+        inactive_clinics = Clinic.objects.filter(is_active=False).count()
         
-        # City distribution
-        city_distribution = dict(
-            Clinic.objects.values('city').annotate(
-                count=Count('city')
-            ).order_by('-count')[:10].values_list('city', 'count')
-        )
+        # Calculate monthly change (clinics created this month vs last month)
+        now = timezone.now()
+        this_month_start = now.replace(day=1, hour=0, minute=0, second=0, microsecond=0)
+        last_month_start = (this_month_start - timedelta(days=1)).replace(day=1)
         
-        # Specialization distribution
-        specialization_data = []
-        for clinic in Clinic.objects.exclude(specialties__isnull=True).exclude(specialties=''):
-            specialties = clinic.specialties
-            for spec in specialties:
-                specialization_data.append(spec.strip())
+        this_month_clinics = Clinic.objects.filter(created_at__gte=this_month_start).count()
+        last_month_clinics = Clinic.objects.filter(
+            created_at__gte=last_month_start,
+            created_at__lt=this_month_start
+        ).count()
         
-        from collections import Counter
-        specialization_distribution = dict(Counter(specialization_data).most_common(10))
-        
-        # Monthly registrations (last 12 months)
-        monthly_registrations = []
-        for i in range(12):
-            month_start = timezone.now().replace(day=1) - timedelta(days=30*i)
-            month_end = month_start + timedelta(days=30)
-            
-            month_clinics = Clinic.objects.filter(
-                created_at__gte=month_start,
-                created_at__lt=month_end
-            ).count()
-            
-            monthly_registrations.append({
-                'month': month_start.strftime('%Y-%m'),
-                'registrations': month_clinics
-            })
-        
-        # Average rating
-        avg_rating = ClinicReview.objects.filter(is_approved=True).aggregate(
-            avg=Avg('overall_rating')
-        )['avg'] or 0
+        monthly_change = this_month_clinics - last_month_clinics
         
         stats_data = {
-            'total_clinics': total_clinics,
-            'verified_clinics': verified_clinics,
-            'active_clinics': active_clinics,
-            'total_appointments': total_appointments,
-            'total_services': total_services,
-            'city_distribution': city_distribution,
-            'specialization_distribution': specialization_distribution,
-            'monthly_registrations': monthly_registrations,
-            'average_rating': round(avg_rating, 2)
+            'total_clinics': {
+                'value': total_clinics,
+                'change': f"{'+' if monthly_change >= 0 else ''}{monthly_change}"
+            },
+            'active_clinics': {
+                'value': active_clinics,
+                'change': '+0'  # Could calculate this if needed
+            },
+            'online_consultations': {
+                'value': online_consultations,
+                'change': '+0'  # Could calculate this if needed
+            },
+            'inactive_clinics': {
+                'value': inactive_clinics,
+                'change': '+0'  # Could calculate this if needed
+            }
         }
         
-        serializer = ClinicStatsSerializer(stats_data)
         return Response({
             'success': True,
-            'data': serializer.data,
+            'data': stats_data,
             'message': 'Clinic statistics retrieved successfully',
             'timestamp': timezone.now().isoformat()
         }, status=status.HTTP_200_OK)

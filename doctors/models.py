@@ -136,33 +136,30 @@ class DoctorSchedule(models.Model):
         return f"{self.doctor.name} - {self.day_of_week} ({self.start_time}-{self.end_time})"
 
 
-class DoctorAvailability(models.Model):
-    """Specific date availability for doctors (overrides weekly schedule)"""
-    
+class DoctorSlot(models.Model):
+    """Specific time slots for doctor availability (supports multiple slots per day, calendar/month view)"""
     doctor = models.ForeignKey(
-        settings.AUTH_USER_MODEL, 
-        on_delete=models.CASCADE, 
-        related_name='availabilities'
+        settings.AUTH_USER_MODEL,
+        on_delete=models.CASCADE,
+        related_name='slots'
     )
     date = models.DateField()
-    start_time = models.TimeField(null=True, blank=True)
-    end_time = models.TimeField(null=True, blank=True)
+    start_time = models.TimeField()
+    end_time = models.TimeField()
     is_available = models.BooleanField(default=True)
-    reason = models.CharField(max_length=200, blank=True, help_text="Reason for unavailability")
-    
-    # Metadata
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
-    
+
     class Meta:
-        db_table = 'doctor_availabilities'
-        verbose_name = 'Doctor Availability'
-        verbose_name_plural = 'Doctor Availabilities'
-        unique_together = ['doctor', 'date']
-    
+        db_table = 'doctor_slots'
+        verbose_name = 'Doctor Slot'
+        verbose_name_plural = 'Doctor Slots'
+        unique_together = ['doctor', 'date', 'start_time', 'end_time']
+        ordering = ['date', 'start_time']
+
     def __str__(self):
         status = "Available" if self.is_available else "Unavailable"
-        return f"{self.doctor.name} - {self.date} ({status})"
+        return f"{self.doctor.name} - {self.date} {self.start_time}-{self.end_time} ({status})"
 
 
 class DoctorEducation(models.Model):

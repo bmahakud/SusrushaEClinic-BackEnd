@@ -1,9 +1,10 @@
 from rest_framework import serializers
 from django.utils import timezone
+import pytz
 from authentication.models import User
 from .models import (
     DoctorProfile, DoctorEducation, DoctorExperience, 
-    DoctorDocument, DoctorAvailability, DoctorSchedule, DoctorReview
+    DoctorDocument, DoctorSchedule, DoctorReview, DoctorSlot
 )
 
 
@@ -89,18 +90,6 @@ class DoctorDocumentSerializer(serializers.ModelSerializer):
         read_only_fields = ['id', 'is_verified', 'verified_by', 'verified_at', 'uploaded_at', 'updated_at']
 
 
-class DoctorAvailabilitySerializer(serializers.ModelSerializer):
-    """Serializer for doctor availability"""
-    
-    class Meta:
-        model = DoctorAvailability
-        fields = [
-            'id', 'doctor', 'date', 'start_time', 'end_time',
-            'is_available', 'reason', 'created_at', 'updated_at'
-        ]
-        read_only_fields = ['id', 'created_at', 'updated_at']
-
-
 class DoctorScheduleSerializer(serializers.ModelSerializer):
     """Serializer for doctor schedule"""
     
@@ -130,18 +119,23 @@ class DoctorReviewSerializer(serializers.ModelSerializer):
 
 
 class DoctorListSerializer(serializers.ModelSerializer):
-    """Serializer for doctor list view"""
+    """Serializer for doctor list view (now includes all fields for superadmin dashboard)"""
     user_name = serializers.CharField(source='user.name', read_only=True)
+    user_phone = serializers.CharField(source='user.phone', read_only=True)
+    user_email = serializers.CharField(source='user.email', read_only=True)
     experience_years = serializers.ReadOnlyField()
-    # Note: Using 'rating' field from model instead of 'average_rating'
     
     class Meta:
         model = DoctorProfile
         fields = [
-            'id', 'user', 'user_name', 'specialization', 'qualification',
+            'id', 'user', 'user_name', 'user_phone', 'user_email',
+            'license_number', 'qualification', 'specialization', 'sub_specialization',
             'experience_years', 'consultation_fee', 'online_consultation_fee',
-            'rating', 'total_reviews', 'languages_spoken',
-            'is_online_consultation_available', 'is_verified', 'is_active'
+            'languages_spoken', 'bio', 'achievements',
+            'is_verified', 'consultation_duration',
+            'is_online_consultation_available', 'is_active',
+            'rating', 'total_reviews', 'clinic_name', 'clinic_address',
+            'is_accepting_patients', 'created_at', 'updated_at'
         ]
 
 
@@ -210,18 +204,22 @@ class DoctorScheduleCreateSerializer(serializers.ModelSerializer):
         return super().create(validated_data)
 
 
-class DoctorAvailabilityCreateSerializer(serializers.ModelSerializer):
-    """Serializer for creating doctor availability"""
-    
+class DoctorSlotSerializer(serializers.ModelSerializer):
+    """Serializer for doctor slots (multiple slots per day)"""
     class Meta:
-        model = DoctorAvailability
+        model = DoctorSlot
         fields = [
-            'date', 'start_time', 'end_time', 'is_available', 'reason'
+            'id', 'doctor', 'date', 'start_time', 'end_time', 'is_available', 'created_at', 'updated_at'
         ]
-    
-    def create(self, validated_data):
-        """Create availability for doctor"""
-        doctor_id = self.context['view'].kwargs.get('doctor_id')
-        validated_data['doctor_id'] = doctor_id
-        return super().create(validated_data)
+        read_only_fields = ['id', 'created_at', 'updated_at']
+
+    def to_representation(self, instance):
+        data = super().to_representation(instance)
+        ist = pytz.timezone('Asia/Kolkata')
+        for field in ['created_at', 'updated_at']:
+            if data.get(field):
+                dt = getattr(instance, field)
+                if timezone.is_aware(dt):
+                    data[field] = dt.astimezone(ist).isoformat()
+        return data
 
