@@ -18,32 +18,30 @@ from django.contrib import admin
 from django.urls import path, include
 from django.conf import settings
 from django.conf.urls.static import static
-from django.http import JsonResponse
-from django.views.decorators.csrf import csrf_exempt
-
-@csrf_exempt
-def health_check(request):
-    """Health check endpoint for Railway deployment."""
-    return JsonResponse({
-        'status': 'healthy',
-        'message': 'Sushrusa Healthcare Platform API is running'
-    })
+from drf_spectacular.views import SpectacularAPIView, SpectacularSwaggerView, SpectacularRedocView
 
 urlpatterns = [
+    # Admin
     path('admin/', admin.site.urls),
-    path('api/health/', health_check, name='health_check'),
+    
+    # API Documentation
+    path('api/schema/', SpectacularAPIView.as_view(), name='schema'),
+    path('api/docs/', SpectacularSwaggerView.as_view(url_name='schema'), name='swagger-ui'),
+    path('api/redoc/', SpectacularRedocView.as_view(url_name='schema'), name='redoc'),
+    
+    # API Routes
     path('api/auth/', include('authentication.urls')),
     path('api/patients/', include('patients.urls')),
-    path('api/doctors/', include('doctors.urls')),
-    path('api/consultations/', include('consultations.urls')),
+    path('api/admin/doctors/', include('doctors.urls')),
+    path('api/doctors/', include('doctors.urls')),  # Add this line for frontend compatibility
+    path("api/consultations/", include("consultations.urls")),
     path('api/prescriptions/', include('prescriptions.urls')),
     path('api/payments/', include('payments.urls')),
     path('api/eclinic/', include('eclinic.urls')),
     path('api/analytics/', include('analytics.urls')),
 ]
 
-# Serve static and media files in development
+# Serve media files in development
 if settings.DEBUG:
-    urlpatterns += static(settings.STATIC_URL, document_root=settings.STATIC_ROOT)
     urlpatterns += static(settings.MEDIA_URL, document_root=settings.MEDIA_ROOT)
 

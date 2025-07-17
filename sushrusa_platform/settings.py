@@ -25,9 +25,9 @@ BASE_DIR = Path(__file__).resolve().parent.parent
 SECRET_KEY = os.environ.get('SECRET_KEY', 'django-insecure-^6d21z(ms*fd=v$s*u@y2#kmabi7uads8dg%#8x9y&w_4d#8&a')
 
 # SECURITY WARNING: don't run with debug turned on in production!
-DEBUG = os.environ.get('DEBUG', 'False').lower() == 'true'
+DEBUG = os.environ.get('DEBUG', 'True').lower() == 'true'
 
-ALLOWED_HOSTS = os.environ.get('ALLOWED_HOSTS', '*').split(',')
+ALLOWED_HOSTS = ['*']  # Allow all hosts for development and deployment
 
 
 # Application definition
@@ -66,7 +66,6 @@ INSTALLED_APPS = DJANGO_APPS + THIRD_PARTY_APPS + LOCAL_APPS
 MIDDLEWARE = [
     'corsheaders.middleware.CorsMiddleware',
     'django.middleware.security.SecurityMiddleware',
-    'whitenoise.middleware.WhiteNoiseMiddleware',  # Add WhiteNoise for static files
     'django.contrib.sessions.middleware.SessionMiddleware',
     'django.middleware.common.CommonMiddleware',
     'django.middleware.csrf.CsrfViewMiddleware',
@@ -108,15 +107,7 @@ DATABASES = {
 # For production, use PostgreSQL
 if os.environ.get('DATABASE_URL'):
     import dj_database_url
-    db_config = dj_database_url.parse(os.environ.get('DATABASE_URL', ''))
-    DATABASES['default'] = {
-        'ENGINE': db_config.get('ENGINE', 'django.db.backends.postgresql'),
-        'NAME': db_config.get('NAME', ''),
-        'USER': db_config.get('USER', ''),
-        'PASSWORD': db_config.get('PASSWORD', ''),
-        'HOST': db_config.get('HOST', ''),
-        'PORT': db_config.get('PORT', ''),
-    }
+    DATABASES['default'] = dj_database_url.parse(os.environ.get('DATABASE_URL'))
 
 
 # Custom User Model
@@ -159,9 +150,6 @@ USE_TZ = True
 
 STATIC_URL = '/static/'
 STATIC_ROOT = BASE_DIR / 'staticfiles'
-
-# WhiteNoise configuration for static files
-STATICFILES_STORAGE = 'whitenoise.storage.CompressedManifestStaticFilesStorage'
 
 MEDIA_URL = '/media/'
 MEDIA_ROOT = BASE_DIR / 'media'
