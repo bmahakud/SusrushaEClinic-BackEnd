@@ -51,6 +51,14 @@ class PatientProfile(models.Model):
         last_consultation = self.user.patient_consultations.order_by('-created_at').first()
         return last_consultation.created_at.date() if last_consultation else None
 
+    @property
+    def age(self):
+        """Calculate age from user's date of birth"""
+        if self.user.date_of_birth:
+            today = timezone.now().date()
+            return today.year - self.user.date_of_birth.year - ((today.month, today.day) < (self.user.date_of_birth.month, self.user.date_of_birth.day))
+        return None
+
 
 class MedicalRecord(models.Model):
     """Medical records for patients"""

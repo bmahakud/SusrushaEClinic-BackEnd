@@ -164,14 +164,28 @@ class PatientListSerializer(serializers.ModelSerializer):
     age = serializers.ReadOnlyField()
     total_consultations = serializers.SerializerMethodField()
     last_consultation_date = serializers.SerializerMethodField()
+    street = serializers.CharField(source='user.street', read_only=True)
+    city = serializers.CharField(source='user.city', read_only=True)
+    state = serializers.CharField(source='user.state', read_only=True)
+    pincode = serializers.CharField(source='user.pincode', read_only=True)
+    country = serializers.CharField(source='user.country', read_only=True)
+    emergency_contact_name = serializers.CharField(source='user.emergency_contact_name', read_only=True)
+    emergency_contact_phone = serializers.CharField(source='user.emergency_contact_phone', read_only=True)
+    emergency_contact_relationship = serializers.CharField(source='user.emergency_contact_relationship', read_only=True)
+    medical_history = serializers.CharField(source='user.medical_history', read_only=True)
     
     class Meta:
         model = PatientProfile
         fields = [
             'id', 'user', 'user_name', 'user_phone', 'user_email',
-            'date_of_birth', 'gender', 'blood_group', 'age',
-            'total_consultations', 'last_consultation_date',
-            'created_at'
+            'date_of_birth', 'gender', 'blood_group',
+            'allergies', 'chronic_conditions', 'current_medications',
+            'preferred_language', 'is_active',
+            'street', 'city', 'state', 'pincode', 'country',
+            'emergency_contact_name', 'emergency_contact_phone', 'emergency_contact_relationship',
+            'medical_history',
+            'created_at', 'updated_at', 'age',
+            'total_consultations', 'last_consultation_date'
         ]
     
     def get_total_consultations(self, obj):

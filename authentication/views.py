@@ -430,6 +430,34 @@ class AdminUserManagementView(APIView):
                 'is_verified': True,  # Admin-created users are pre-verified
             }
             
+            # Add additional user fields if provided
+            if 'date_of_birth' in request.data:
+                user_data['date_of_birth'] = request.data['date_of_birth']
+            if 'gender' in request.data:
+                user_data['gender'] = request.data['gender']
+            if 'blood_group' in request.data:
+                user_data['blood_group'] = request.data['blood_group']
+            if 'allergies' in request.data:
+                user_data['allergies'] = request.data['allergies']
+            if 'medical_history' in request.data:
+                user_data['medical_history'] = request.data['medical_history']
+            if 'street' in request.data:
+                user_data['street'] = request.data['street']
+            if 'city' in request.data:
+                user_data['city'] = request.data['city']
+            if 'state' in request.data:
+                user_data['state'] = request.data['state']
+            if 'pincode' in request.data:
+                user_data['pincode'] = request.data['pincode']
+            if 'country' in request.data:
+                user_data['country'] = request.data['country']
+            if 'emergency_contact_name' in request.data:
+                user_data['emergency_contact_name'] = request.data['emergency_contact_name']
+            if 'emergency_contact_phone' in request.data:
+                user_data['emergency_contact_phone'] = request.data['emergency_contact_phone']
+            if 'emergency_contact_relationship' in request.data:
+                user_data['emergency_contact_relationship'] = request.data['emergency_contact_relationship']
+            
             # Set password if provided, otherwise generate random password
             password = request.data.get('password')
             if not password:
@@ -440,6 +468,25 @@ class AdminUserManagementView(APIView):
             user.set_password(password)
             user.save()
             
+            # Create patient profile if role is patient
+            patient_profile = None
+            if user.role == 'patient':
+                from patients.models import PatientProfile
+                
+                patient_data = {
+                    'user': user,
+                    'blood_group': request.data.get('blood_group', ''),
+                    'allergies': request.data.get('allergies', ''),
+                    'chronic_conditions': request.data.get('chronic_conditions', []),
+                    'current_medications': request.data.get('current_medications', []),
+                    'insurance_provider': request.data.get('insurance_provider', ''),
+                    'insurance_policy_number': request.data.get('insurance_policy_number', ''),
+                    'insurance_expiry': request.data.get('insurance_expiry'),
+                    'preferred_language': request.data.get('preferred_language', 'English'),
+                }
+                
+                patient_profile = PatientProfile.objects.create(**patient_data)
+            
             return Response({
                 'success': True,
                 'data': {
@@ -448,7 +495,8 @@ class AdminUserManagementView(APIView):
                     'name': user.name,
                     'role': user.role,
                     'email': user.email,
-                    'password': password if not request.data.get('password') else '***'
+                    'password': password if not request.data.get('password') else '***',
+                    'patient_profile': patient_profile.id if patient_profile else None
                 },
                 'message': f'{user.get_role_display()} account created successfully',
                 'timestamp': timezone.now().isoformat()

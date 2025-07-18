@@ -92,20 +92,10 @@ class PatientProfileViewSet(ModelViewSet):
         
         if page is not None:
             serializer = self.get_serializer(page, many=True)
-            return self.get_paginated_response({
-                'success': True,
-                'data': serializer.data,
-                'message': 'Patients retrieved successfully',
-                'timestamp': timezone.now().isoformat()
-            })
+            return self.get_paginated_response(serializer.data)
         
         serializer = self.get_serializer(queryset, many=True)
-        return Response({
-            'success': True,
-            'data': serializer.data,
-            'message': 'Patients retrieved successfully',
-            'timestamp': timezone.now().isoformat()
-        }, status=status.HTTP_200_OK)
+        return Response(serializer.data, status=status.HTTP_200_OK)
     
     @extend_schema(
         request=PatientProfileCreateSerializer,
@@ -208,20 +198,10 @@ class PatientMedicalRecordViewSet(ModelViewSet):
         
         if page is not None:
             serializer = self.get_serializer(page, many=True)
-            return self.get_paginated_response({
-                'success': True,
-                'data': serializer.data,
-                'message': 'Medical records retrieved successfully',
-                'timestamp': timezone.now().isoformat()
-            })
+            return self.get_paginated_response(serializer.data)
         
         serializer = self.get_serializer(queryset, many=True)
-        return Response({
-            'success': True,
-            'data': serializer.data,
-            'message': 'Medical records retrieved successfully',
-            'timestamp': timezone.now().isoformat()
-        }, status=status.HTTP_200_OK)
+        return Response(serializer.data, status=status.HTTP_200_OK)
     
     @extend_schema(
         request=MedicalRecordCreateSerializer,
@@ -506,9 +486,9 @@ class PatientStatsView(APIView):
         
         # Gender distribution
         gender_distribution = dict(
-            PatientProfile.objects.values('gender').annotate(
-                count=Count('gender')
-            ).values_list('gender', 'count')
+            PatientProfile.objects.values('user__gender').annotate(
+                count=Count('user__gender')
+            ).values_list('user__gender', 'count')
         )
         
         # Age distribution
@@ -517,8 +497,8 @@ class PatientStatsView(APIView):
             '0-18': 0, '19-30': 0, '31-45': 0, '46-60': 0, '60+': 0
         }
         
-        for patient in PatientProfile.objects.filter(date_of_birth__isnull=False):
-            age = (today - patient.date_of_birth).days // 365
+        for patient in PatientProfile.objects.filter(user__date_of_birth__isnull=False):
+            age = (today - patient.user.date_of_birth).days // 365
             if age <= 18:
                 age_ranges['0-18'] += 1
             elif age <= 30:

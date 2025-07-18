@@ -32,8 +32,7 @@ urlpatterns = [
     # API Routes
     path('api/auth/', include('authentication.urls')),
     path('api/patients/', include('patients.urls')),
-    path('api/admin/doctors/', include('doctors.urls')),
-    path('api/doctors/', include('doctors.urls')),  # Add this line for frontend compatibility
+    path('api/doctors/', include('doctors.urls')),
     path("api/consultations/", include("consultations.urls")),
     path('api/prescriptions/', include('prescriptions.urls')),
     path('api/payments/', include('payments.urls')),
