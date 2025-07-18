@@ -378,8 +378,12 @@ class DoctorStatsView(APIView):
     )
     def get(self, request):
         """Get doctor statistics"""
+        
+        user = request.user
+        queryset = DoctorProfile.objects.select_related('user')
+        
         # Check permissions
-        if request.user.role not in ['admin', 'superadmin']:
+        if user.role not in ['admin', 'superadmin']:
             return Response({
                 'success': False,
                 'error': {
