@@ -136,7 +136,7 @@ class DashboardStatsView(APIView):
         # Growth metrics (compared to last month)
         last_month = today - timedelta(days=30)
         
-        users_last_month = User.objects.filter(created_at__date__lte=last_month).count()
+        users_last_month = User.objects.filter(date_joined__date__lte=last_month).count()
         consultations_last_month = Consultation.objects.filter(created_at__date__lte=last_month).count()
         revenue_last_month = Payment.objects.filter(
             status='completed', completed_at__date__lte=last_month
@@ -209,13 +209,13 @@ class UserGrowthAnalyticsView(APIView):
         if period == 'day':
             for i in range(days):
                 date = timezone.now().date() - timedelta(days=i)
-                total_users = User.objects.filter(created_at__date__lte=date).count()
-                new_users = User.objects.filter(created_at__date=date).count()
+                total_users = User.objects.filter(date_joined__date__lte=date).count()
+                new_users = User.objects.filter(date_joined__date=date).count()
                 
                 user_type_breakdown = {
-                    'patients': User.objects.filter(created_at__date=date, role='patient').count(),
-                    'doctors': User.objects.filter(created_at__date=date, role='doctor').count(),
-                    'admins': User.objects.filter(created_at__date=date, role__in=['admin', 'superadmin']).count()
+                    'patients': User.objects.filter(date_joined__date=date, role='patient').count(),
+                    'doctors': User.objects.filter(date_joined__date=date, role='doctor').count(),
+                    'admins': User.objects.filter(date_joined__date=date, role__in=['admin', 'superadmin']).count()
                 }
                 
                 growth_data.append({
@@ -231,20 +231,20 @@ class UserGrowthAnalyticsView(APIView):
                 month_start = timezone.now().replace(day=1) - timedelta(days=30*i)
                 month_end = month_start + timedelta(days=30)
                 
-                total_users = User.objects.filter(created_at__lt=month_end).count()
+                total_users = User.objects.filter(date_joined__lt=month_end).count()
                 new_users = User.objects.filter(
-                    created_at__gte=month_start, created_at__lt=month_end
+                    date_joined__gte=month_start, date_joined__lt=month_end
                 ).count()
                 
                 user_type_breakdown = {
                     'patients': User.objects.filter(
-                        created_at__gte=month_start, created_at__lt=month_end, role='patient'
+                        date_joined__gte=month_start, date_joined__lt=month_end, role='patient'
                     ).count(),
                     'doctors': User.objects.filter(
-                        created_at__gte=month_start, created_at__lt=month_end, role='doctor'
+                        date_joined__gte=month_start, date_joined__lt=month_end, role='doctor'
                     ).count(),
                     'admins': User.objects.filter(
-                        created_at__gte=month_start, created_at__lt=month_end, 
+                        date_joined__gte=month_start, date_joined__lt=month_end, 
                         role__in=['admin', 'superadmin']
                     ).count()
                 }

@@ -1,1 +1,345 @@
 INFO Watching for file changes with StatReloader
+INFO "GET /api/auth/account-type/?phone=2222222222 HTTP/1.1" 200 178
+INFO "OPTIONS /api/auth/send-otp/ HTTP/1.1" 200 0
+INFO "POST /api/auth/send-otp/ HTTP/1.1" 200 147
+INFO "OPTIONS /api/auth/verify-otp/ HTTP/1.1" 200 0
+INFO "POST /api/auth/verify-otp/ HTTP/1.1" 200 700
+INFO "OPTIONS /api/patients/stats/ HTTP/1.1" 200 0
+INFO "OPTIONS /api/patients/?page=1&page_size=10 HTTP/1.1" 200 0
+INFO "GET /api/patients/?page=1&page_size=10 HTTP/1.1" 200 5885
+INFO "GET /api/patients/stats/ HTTP/1.1" 200 543
+INFO "GET /api/patients/stats/ HTTP/1.1" 200 543
+INFO "GET /api/patients/?page=1&page_size=10 HTTP/1.1" 200 5885
+INFO "GET /api/patients/stats/ HTTP/1.1" 200 543
+INFO "GET /api/patients/?page=1&page_size=10 HTTP/1.1" 200 5885
+INFO "OPTIONS /api/analytics/dashboard/ HTTP/1.1" 200 0
+ERROR Internal Server Error: /api/analytics/dashboard/
+Traceback (most recent call last):
+  File "/home/tushar/.local/lib/python3.10/site-packages/django/core/handlers/exception.py", line 55, in inner
+    response = get_response(request)
+  File "/home/tushar/.local/lib/python3.10/site-packages/django/core/handlers/base.py", line 197, in _get_response
+    response = wrapped_callback(request, *callback_args, **callback_kwargs)
+  File "/home/tushar/.local/lib/python3.10/site-packages/django/views/decorators/csrf.py", line 65, in _view_wrapper
+    return view_func(request, *args, **kwargs)
+  File "/home/tushar/.local/lib/python3.10/site-packages/django/views/generic/base.py", line 105, in view
+    return self.dispatch(request, *args, **kwargs)
+  File "/home/tushar/.local/lib/python3.10/site-packages/rest_framework/views.py", line 515, in dispatch
+    response = self.handle_exception(exc)
+  File "/home/tushar/.local/lib/python3.10/site-packages/rest_framework/views.py", line 475, in handle_exception
+    self.raise_uncaught_exception(exc)
+  File "/home/tushar/.local/lib/python3.10/site-packages/rest_framework/views.py", line 486, in raise_uncaught_exception
+    raise exc
+  File "/home/tushar/.local/lib/python3.10/site-packages/rest_framework/views.py", line 512, in dispatch
+    response = handler(request, *args, **kwargs)
+  File "/home/tushar/Videos/sushrusa_backend/analytics/views.py", line 139, in get
+    users_last_month = User.objects.filter(created_at__date__lte=last_month).count()
+  File "/home/tushar/.local/lib/python3.10/site-packages/django/db/models/manager.py", line 87, in manager_method
+    return getattr(self.get_queryset(), name)(*args, **kwargs)
+  File "/home/tushar/.local/lib/python3.10/site-packages/django/db/models/query.py", line 1493, in filter
+    return self._filter_or_exclude(False, args, kwargs)
+  File "/home/tushar/.local/lib/python3.10/site-packages/django/db/models/query.py", line 1511, in _filter_or_exclude
+    clone._filter_or_exclude_inplace(negate, args, kwargs)
+  File "/home/tushar/.local/lib/python3.10/site-packages/django/db/models/query.py", line 1518, in _filter_or_exclude_inplace
+    self._query.add_q(Q(*args, **kwargs))
+  File "/home/tushar/.local/lib/python3.10/site-packages/django/db/models/sql/query.py", line 1646, in add_q
+    clause, _ = self._add_q(q_object, can_reuse)
+  File "/home/tushar/.local/lib/python3.10/site-packages/django/db/models/sql/query.py", line 1678, in _add_q
+    child_clause, needed_inner = self.build_filter(
+  File "/home/tushar/.local/lib/python3.10/site-packages/django/db/models/sql/query.py", line 1526, in build_filter
+    lookups, parts, reffed_expression = self.solve_lookup_type(arg, summarize)
+  File "/home/tushar/.local/lib/python3.10/site-packages/django/db/models/sql/query.py", line 1333, in solve_lookup_type
+    _, field, _, lookup_parts = self.names_to_path(lookup_splitted, self.get_meta())
+  File "/home/tushar/.local/lib/python3.10/site-packages/django/db/models/sql/query.py", line 1805, in names_to_path
+    raise FieldError(
+django.core.exceptions.FieldError: Cannot resolve keyword 'created_at' into field. Choices are: activity_logs, administered_clinics, allergies, applicable_discounts, assigned_rooms, blood_group, cancelled_consultations, city, clinic_reviews, consultationattachment, consultationnote, consultationreschedule, consultationvitalsigns, country, created_discounts, created_patient_notes, date_joined, date_of_birth, discount_usage, doctor_clinic_appointments, doctor_consultations, doctor_documents, doctor_profile, documents, education, email, emergency_contact_name, emergency_contact_phone, emergency_contact_relationship, experience, gender, given_reviews, groups, id, initiated_refunds, is_active, is_staff, is_superuser, is_verified, last_login, logentry, medical_history, medical_records, name, outstandingtoken, password, patient_clinic_appointments, patient_consultations, patient_notes, patient_profile, payment_methods, payments, performance_analytics, phone, pincode, prescriptions_as_doctor, prescriptions_as_patient, profile_picture, received_payments, recorded_medical_records, reviews, role, schedules, sessions, slots, staff_positions, state, street, uploaded_clinic_documents, user_permissions, verified_doctor_documents, verified_documents
+ERROR "GET /api/analytics/dashboard/ HTTP/1.1" 500 165153
+ERROR Internal Server Error: /api/analytics/dashboard/
+Traceback (most recent call last):
+  File "/home/tushar/.local/lib/python3.10/site-packages/django/core/handlers/exception.py", line 55, in inner
+    response = get_response(request)
+  File "/home/tushar/.local/lib/python3.10/site-packages/django/core/handlers/base.py", line 197, in _get_response
+    response = wrapped_callback(request, *callback_args, **callback_kwargs)
+  File "/home/tushar/.local/lib/python3.10/site-packages/django/views/decorators/csrf.py", line 65, in _view_wrapper
+    return view_func(request, *args, **kwargs)
+  File "/home/tushar/.local/lib/python3.10/site-packages/django/views/generic/base.py", line 105, in view
+    return self.dispatch(request, *args, **kwargs)
+  File "/home/tushar/.local/lib/python3.10/site-packages/rest_framework/views.py", line 515, in dispatch
+    response = self.handle_exception(exc)
+  File "/home/tushar/.local/lib/python3.10/site-packages/rest_framework/views.py", line 475, in handle_exception
+    self.raise_uncaught_exception(exc)
+  File "/home/tushar/.local/lib/python3.10/site-packages/rest_framework/views.py", line 486, in raise_uncaught_exception
+    raise exc
+  File "/home/tushar/.local/lib/python3.10/site-packages/rest_framework/views.py", line 512, in dispatch
+    response = handler(request, *args, **kwargs)
+  File "/home/tushar/Videos/sushrusa_backend/analytics/views.py", line 139, in get
+    users_last_month = User.objects.filter(created_at__date__lte=last_month).count()
+  File "/home/tushar/.local/lib/python3.10/site-packages/django/db/models/manager.py", line 87, in manager_method
+    return getattr(self.get_queryset(), name)(*args, **kwargs)
+  File "/home/tushar/.local/lib/python3.10/site-packages/django/db/models/query.py", line 1493, in filter
+    return self._filter_or_exclude(False, args, kwargs)
+  File "/home/tushar/.local/lib/python3.10/site-packages/django/db/models/query.py", line 1511, in _filter_or_exclude
+    clone._filter_or_exclude_inplace(negate, args, kwargs)
+  File "/home/tushar/.local/lib/python3.10/site-packages/django/db/models/query.py", line 1518, in _filter_or_exclude_inplace
+    self._query.add_q(Q(*args, **kwargs))
+  File "/home/tushar/.local/lib/python3.10/site-packages/django/db/models/sql/query.py", line 1646, in add_q
+    clause, _ = self._add_q(q_object, can_reuse)
+  File "/home/tushar/.local/lib/python3.10/site-packages/django/db/models/sql/query.py", line 1678, in _add_q
+    child_clause, needed_inner = self.build_filter(
+  File "/home/tushar/.local/lib/python3.10/site-packages/django/db/models/sql/query.py", line 1526, in build_filter
+    lookups, parts, reffed_expression = self.solve_lookup_type(arg, summarize)
+  File "/home/tushar/.local/lib/python3.10/site-packages/django/db/models/sql/query.py", line 1333, in solve_lookup_type
+    _, field, _, lookup_parts = self.names_to_path(lookup_splitted, self.get_meta())
+  File "/home/tushar/.local/lib/python3.10/site-packages/django/db/models/sql/query.py", line 1805, in names_to_path
+    raise FieldError(
+django.core.exceptions.FieldError: Cannot resolve keyword 'created_at' into field. Choices are: activity_logs, administered_clinics, allergies, applicable_discounts, assigned_rooms, blood_group, cancelled_consultations, city, clinic_reviews, consultationattachment, consultationnote, consultationreschedule, consultationvitalsigns, country, created_discounts, created_patient_notes, date_joined, date_of_birth, discount_usage, doctor_clinic_appointments, doctor_consultations, doctor_documents, doctor_profile, documents, education, email, emergency_contact_name, emergency_contact_phone, emergency_contact_relationship, experience, gender, given_reviews, groups, id, initiated_refunds, is_active, is_staff, is_superuser, is_verified, last_login, logentry, medical_history, medical_records, name, outstandingtoken, password, patient_clinic_appointments, patient_consultations, patient_notes, patient_profile, payment_methods, payments, performance_analytics, phone, pincode, prescriptions_as_doctor, prescriptions_as_patient, profile_picture, received_payments, recorded_medical_records, reviews, role, schedules, sessions, slots, staff_positions, state, street, uploaded_clinic_documents, user_permissions, verified_doctor_documents, verified_documents
+ERROR "GET /api/analytics/dashboard/ HTTP/1.1" 500 165153
+INFO "GET /api/patients/?page=1&page_size=10 HTTP/1.1" 200 5885
+INFO "GET /api/patients/stats/ HTTP/1.1" 200 543
+INFO "GET /api/patients/stats/ HTTP/1.1" 200 543
+INFO "GET /api/patients/?page=1&page_size=10 HTTP/1.1" 200 5885
+ERROR Internal Server Error: /api/analytics/dashboard/
+Traceback (most recent call last):
+  File "/home/tushar/.local/lib/python3.10/site-packages/django/core/handlers/exception.py", line 55, in inner
+    response = get_response(request)
+  File "/home/tushar/.local/lib/python3.10/site-packages/django/core/handlers/base.py", line 197, in _get_response
+    response = wrapped_callback(request, *callback_args, **callback_kwargs)
+  File "/home/tushar/.local/lib/python3.10/site-packages/django/views/decorators/csrf.py", line 65, in _view_wrapper
+    return view_func(request, *args, **kwargs)
+  File "/home/tushar/.local/lib/python3.10/site-packages/django/views/generic/base.py", line 105, in view
+    return self.dispatch(request, *args, **kwargs)
+  File "/home/tushar/.local/lib/python3.10/site-packages/rest_framework/views.py", line 515, in dispatch
+    response = self.handle_exception(exc)
+  File "/home/tushar/.local/lib/python3.10/site-packages/rest_framework/views.py", line 475, in handle_exception
+    self.raise_uncaught_exception(exc)
+  File "/home/tushar/.local/lib/python3.10/site-packages/rest_framework/views.py", line 486, in raise_uncaught_exception
+    raise exc
+  File "/home/tushar/.local/lib/python3.10/site-packages/rest_framework/views.py", line 512, in dispatch
+    response = handler(request, *args, **kwargs)
+  File "/home/tushar/Videos/sushrusa_backend/analytics/views.py", line 139, in get
+    users_last_month = User.objects.filter(created_at__date__lte=last_month).count()
+  File "/home/tushar/.local/lib/python3.10/site-packages/django/db/models/manager.py", line 87, in manager_method
+    return getattr(self.get_queryset(), name)(*args, **kwargs)
+  File "/home/tushar/.local/lib/python3.10/site-packages/django/db/models/query.py", line 1493, in filter
+    return self._filter_or_exclude(False, args, kwargs)
+  File "/home/tushar/.local/lib/python3.10/site-packages/django/db/models/query.py", line 1511, in _filter_or_exclude
+    clone._filter_or_exclude_inplace(negate, args, kwargs)
+  File "/home/tushar/.local/lib/python3.10/site-packages/django/db/models/query.py", line 1518, in _filter_or_exclude_inplace
+    self._query.add_q(Q(*args, **kwargs))
+  File "/home/tushar/.local/lib/python3.10/site-packages/django/db/models/sql/query.py", line 1646, in add_q
+    clause, _ = self._add_q(q_object, can_reuse)
+  File "/home/tushar/.local/lib/python3.10/site-packages/django/db/models/sql/query.py", line 1678, in _add_q
+    child_clause, needed_inner = self.build_filter(
+  File "/home/tushar/.local/lib/python3.10/site-packages/django/db/models/sql/query.py", line 1526, in build_filter
+    lookups, parts, reffed_expression = self.solve_lookup_type(arg, summarize)
+  File "/home/tushar/.local/lib/python3.10/site-packages/django/db/models/sql/query.py", line 1333, in solve_lookup_type
+    _, field, _, lookup_parts = self.names_to_path(lookup_splitted, self.get_meta())
+  File "/home/tushar/.local/lib/python3.10/site-packages/django/db/models/sql/query.py", line 1805, in names_to_path
+    raise FieldError(
+django.core.exceptions.FieldError: Cannot resolve keyword 'created_at' into field. Choices are: activity_logs, administered_clinics, allergies, applicable_discounts, assigned_rooms, blood_group, cancelled_consultations, city, clinic_reviews, consultationattachment, consultationnote, consultationreschedule, consultationvitalsigns, country, created_discounts, created_patient_notes, date_joined, date_of_birth, discount_usage, doctor_clinic_appointments, doctor_consultations, doctor_documents, doctor_profile, documents, education, email, emergency_contact_name, emergency_contact_phone, emergency_contact_relationship, experience, gender, given_reviews, groups, id, initiated_refunds, is_active, is_staff, is_superuser, is_verified, last_login, logentry, medical_history, medical_records, name, outstandingtoken, password, patient_clinic_appointments, patient_consultations, patient_notes, patient_profile, payment_methods, payments, performance_analytics, phone, pincode, prescriptions_as_doctor, prescriptions_as_patient, profile_picture, received_payments, recorded_medical_records, reviews, role, schedules, sessions, slots, staff_positions, state, street, uploaded_clinic_documents, user_permissions, verified_doctor_documents, verified_documents
+ERROR "GET /api/analytics/dashboard/ HTTP/1.1" 500 165153
+INFO "GET /api/patients/?page=1&page_size=10 HTTP/1.1" 200 5885
+INFO "GET /api/patients/stats/ HTTP/1.1" 200 543
+INFO "GET /api/auth/account-type/?phone=2222222222 HTTP/1.1" 200 178
+INFO "POST /api/auth/send-otp/ HTTP/1.1" 200 147
+INFO "POST /api/auth/verify-otp/ HTTP/1.1" 200 700
+ERROR Internal Server Error: /api/analytics/dashboard/
+Traceback (most recent call last):
+  File "/home/tushar/.local/lib/python3.10/site-packages/django/core/handlers/exception.py", line 55, in inner
+    response = get_response(request)
+  File "/home/tushar/.local/lib/python3.10/site-packages/django/core/handlers/base.py", line 197, in _get_response
+    response = wrapped_callback(request, *callback_args, **callback_kwargs)
+  File "/home/tushar/.local/lib/python3.10/site-packages/django/views/decorators/csrf.py", line 65, in _view_wrapper
+    return view_func(request, *args, **kwargs)
+  File "/home/tushar/.local/lib/python3.10/site-packages/django/views/generic/base.py", line 105, in view
+    return self.dispatch(request, *args, **kwargs)
+  File "/home/tushar/.local/lib/python3.10/site-packages/rest_framework/views.py", line 515, in dispatch
+    response = self.handle_exception(exc)
+  File "/home/tushar/.local/lib/python3.10/site-packages/rest_framework/views.py", line 475, in handle_exception
+    self.raise_uncaught_exception(exc)
+  File "/home/tushar/.local/lib/python3.10/site-packages/rest_framework/views.py", line 486, in raise_uncaught_exception
+    raise exc
+  File "/home/tushar/.local/lib/python3.10/site-packages/rest_framework/views.py", line 512, in dispatch
+    response = handler(request, *args, **kwargs)
+  File "/home/tushar/Videos/sushrusa_backend/analytics/views.py", line 139, in get
+    users_last_month = User.objects.filter(created_at__date__lte=last_month).count()
+  File "/home/tushar/.local/lib/python3.10/site-packages/django/db/models/manager.py", line 87, in manager_method
+    return getattr(self.get_queryset(), name)(*args, **kwargs)
+  File "/home/tushar/.local/lib/python3.10/site-packages/django/db/models/query.py", line 1493, in filter
+    return self._filter_or_exclude(False, args, kwargs)
+  File "/home/tushar/.local/lib/python3.10/site-packages/django/db/models/query.py", line 1511, in _filter_or_exclude
+    clone._filter_or_exclude_inplace(negate, args, kwargs)
+  File "/home/tushar/.local/lib/python3.10/site-packages/django/db/models/query.py", line 1518, in _filter_or_exclude_inplace
+    self._query.add_q(Q(*args, **kwargs))
+  File "/home/tushar/.local/lib/python3.10/site-packages/django/db/models/sql/query.py", line 1646, in add_q
+    clause, _ = self._add_q(q_object, can_reuse)
+  File "/home/tushar/.local/lib/python3.10/site-packages/django/db/models/sql/query.py", line 1678, in _add_q
+    child_clause, needed_inner = self.build_filter(
+  File "/home/tushar/.local/lib/python3.10/site-packages/django/db/models/sql/query.py", line 1526, in build_filter
+    lookups, parts, reffed_expression = self.solve_lookup_type(arg, summarize)
+  File "/home/tushar/.local/lib/python3.10/site-packages/django/db/models/sql/query.py", line 1333, in solve_lookup_type
+    _, field, _, lookup_parts = self.names_to_path(lookup_splitted, self.get_meta())
+  File "/home/tushar/.local/lib/python3.10/site-packages/django/db/models/sql/query.py", line 1805, in names_to_path
+    raise FieldError(
+django.core.exceptions.FieldError: Cannot resolve keyword 'created_at' into field. Choices are: activity_logs, administered_clinics, allergies, applicable_discounts, assigned_rooms, blood_group, cancelled_consultations, city, clinic_reviews, consultationattachment, consultationnote, consultationreschedule, consultationvitalsigns, country, created_discounts, created_patient_notes, date_joined, date_of_birth, discount_usage, doctor_clinic_appointments, doctor_consultations, doctor_documents, doctor_profile, documents, education, email, emergency_contact_name, emergency_contact_phone, emergency_contact_relationship, experience, gender, given_reviews, groups, id, initiated_refunds, is_active, is_staff, is_superuser, is_verified, last_login, logentry, medical_history, medical_records, name, outstandingtoken, password, patient_clinic_appointments, patient_consultations, patient_notes, patient_profile, payment_methods, payments, performance_analytics, phone, pincode, prescriptions_as_doctor, prescriptions_as_patient, profile_picture, received_payments, recorded_medical_records, reviews, role, schedules, sessions, slots, staff_positions, state, street, uploaded_clinic_documents, user_permissions, verified_doctor_documents, verified_documents
+ERROR "GET /api/analytics/dashboard/ HTTP/1.1" 500 165153
+INFO /home/tushar/Videos/sushrusa_backend/analytics/views.py changed, reloading.
+Performing system checks...
+
+System check identified no issues (0 silenced).
+July 18, 2025 - 16:04:42
+Django version 5.2.4, using settings 'sushrusa_platform.settings'
+Starting development server at http://0.0.0.0:8000/
+Quit the server with CONTROL-C.
+
+WARNING: This is a development server. Do not use it in a production setting. Use a production WSGI or ASGI server instead.
+For more information on production servers see: https://docs.djangoproject.com/en/5.2/howto/deployment/
+INFO Watching for file changes with StatReloader
+INFO "OPTIONS /api/auth/profile/ HTTP/1.1" 200 0
+INFO "GET /api/auth/profile/ HTTP/1.1" 200 593
+INFO "GET /api/auth/profile/ HTTP/1.1" 200 593
+INFO "GET /api/auth/profile/ HTTP/1.1" 200 593
+INFO Watching for file changes with StatReloader
+INFO "GET /api/auth/account-type/?phone=2222222222 HTTP/1.1" 200 178
+INFO "POST /api/auth/send-otp/ HTTP/1.1" 200 147
+INFO "POST /api/auth/verify-otp/ HTTP/1.1" 200 700
+INFO "GET /api/analytics/dashboard/ HTTP/1.1" 200 411
+INFO "GET /api/analytics/dashboard/ HTTP/1.1" 200 411
+INFO "GET /api/patients/stats/ HTTP/1.1" 200 543
+INFO "GET /api/patients/?page=1&page_size=10 HTTP/1.1" 200 5885
+INFO "OPTIONS /api/doctors/ HTTP/1.1" 200 0
+INFO "OPTIONS /api/doctors/stats/ HTTP/1.1" 200 0
+/home/tushar/.local/lib/python3.10/site-packages/rest_framework/fields.py:990: UserWarning: max_value should be an integer or Decimal instance.
+  warnings.warn("max_value should be an integer or Decimal instance.")
+/home/tushar/.local/lib/python3.10/site-packages/rest_framework/fields.py:992: UserWarning: min_value should be an integer or Decimal instance.
+  warnings.warn("min_value should be an integer or Decimal instance.")
+INFO "GET /api/doctors/ HTTP/1.1" 200 2308
+INFO "GET /api/doctors/stats/ HTTP/1.1" 200 576
+INFO "GET /api/patients/?page=1&page_size=10 HTTP/1.1" 200 5885
+INFO "GET /api/patients/stats/ HTTP/1.1" 200 543
+INFO "GET /api/analytics/dashboard/ HTTP/1.1" 200 411
+INFO "GET /api/patients/?page=1&page_size=10 HTTP/1.1" 200 5885
+INFO "GET /api/patients/stats/ HTTP/1.1" 200 543
+INFO "GET /api/patients/?page=1&page_size=10 HTTP/1.1" 200 5885
+INFO "GET /api/patients/stats/ HTTP/1.1" 200 543
+INFO "GET /api/patients/?page=1&page_size=10 HTTP/1.1" 200 5885
+INFO "GET /api/patients/stats/ HTTP/1.1" 200 543
+INFO "GET /api/doctors/ HTTP/1.1" 200 2308
+INFO "GET /api/doctors/stats/ HTTP/1.1" 200 576
+INFO "GET /api/patients/stats/ HTTP/1.1" 200 543
+INFO "GET /api/patients/?page=1&page_size=10 HTTP/1.1" 200 5885
+INFO "GET /api/doctors/ HTTP/1.1" 200 2308
+INFO "GET /api/doctors/stats/ HTTP/1.1" 200 576
+INFO "GET /api/doctors/ HTTP/1.1" 200 2308
+INFO "GET /api/doctors/stats/ HTTP/1.1" 200 576
+INFO "GET /api/patients/stats/ HTTP/1.1" 200 543
+INFO "GET /api/patients/?page=1&page_size=10 HTTP/1.1" 200 5885
+INFO "GET /api/patients/?page=1&page_size=10 HTTP/1.1" 200 5885
+INFO "GET /api/patients/stats/ HTTP/1.1" 200 543
+INFO "GET /api/doctors/ HTTP/1.1" 200 2308
+INFO "GET /api/doctors/stats/ HTTP/1.1" 200 576
+INFO "GET /api/patients/?page=1&page_size=10 HTTP/1.1" 200 5885
+INFO "GET /api/patients/stats/ HTTP/1.1" 200 543
+INFO "GET /api/doctors/ HTTP/1.1" 200 2308
+INFO "GET /api/doctors/stats/ HTTP/1.1" 200 576
+INFO "GET /api/patients/stats/ HTTP/1.1" 200 543
+INFO "GET /api/patients/?page=1&page_size=10 HTTP/1.1" 200 5885
+INFO "GET /api/doctors/stats/ HTTP/1.1" 200 576
+INFO "GET /api/doctors/ HTTP/1.1" 200 2308
+INFO "GET /api/patients/stats/ HTTP/1.1" 200 543
+INFO "GET /api/patients/?page=1&page_size=10 HTTP/1.1" 200 5885
+INFO "GET /api/doctors/ HTTP/1.1" 200 2308
+INFO "GET /api/doctors/stats/ HTTP/1.1" 200 576
+INFO "GET /api/patients/stats/ HTTP/1.1" 200 543
+INFO "GET /api/patients/?page=1&page_size=10 HTTP/1.1" 200 5885
+INFO "GET /api/doctors/ HTTP/1.1" 200 2308
+INFO "GET /api/doctors/stats/ HTTP/1.1" 200 576
+INFO "GET /api/patients/stats/ HTTP/1.1" 200 543
+INFO "GET /api/patients/?page=1&page_size=10 HTTP/1.1" 200 5885
+INFO "GET /api/doctors/ HTTP/1.1" 200 2308
+INFO "GET /api/doctors/stats/ HTTP/1.1" 200 576
+INFO "GET /api/patients/?page=1&page_size=10 HTTP/1.1" 200 5885
+INFO "GET /api/patients/stats/ HTTP/1.1" 200 543
+INFO "GET /api/doctors/ HTTP/1.1" 200 2308
+INFO "GET /api/doctors/stats/ HTTP/1.1" 200 576
+INFO "GET /api/patients/?page=1&page_size=10 HTTP/1.1" 200 5885
+INFO "GET /api/patients/stats/ HTTP/1.1" 200 543
+INFO "GET /api/doctors/ HTTP/1.1" 200 2308
+INFO "GET /api/doctors/stats/ HTTP/1.1" 200 576
+INFO "GET /api/patients/stats/ HTTP/1.1" 200 543
+INFO "GET /api/patients/?page=1&page_size=10 HTTP/1.1" 200 5885
+INFO "GET /api/doctors/ HTTP/1.1" 200 2308
+INFO "GET /api/doctors/stats/ HTTP/1.1" 200 576
+INFO "GET /api/patients/?page=1&page_size=10 HTTP/1.1" 200 5885
+INFO "GET /api/patients/stats/ HTTP/1.1" 200 543
+INFO "GET /api/doctors/stats/ HTTP/1.1" 200 576
+INFO "GET /api/doctors/ HTTP/1.1" 200 2308
+INFO "GET /api/patients/?page=1&page_size=10 HTTP/1.1" 200 5885
+INFO "GET /api/patients/stats/ HTTP/1.1" 200 543
+INFO "GET /api/doctors/ HTTP/1.1" 200 2308
+INFO "GET /api/doctors/stats/ HTTP/1.1" 200 576
+INFO "GET /api/patients/stats/ HTTP/1.1" 200 543
+INFO "GET /api/patients/?page=1&page_size=10 HTTP/1.1" 200 5885
+INFO "GET /api/doctors/stats/ HTTP/1.1" 200 576
+INFO "GET /api/doctors/ HTTP/1.1" 200 2308
+INFO "GET /api/patients/stats/ HTTP/1.1" 200 543
+INFO "GET /api/patients/?page=1&page_size=10 HTTP/1.1" 200 5885
+INFO "GET /api/doctors/ HTTP/1.1" 200 2308
+INFO "GET /api/doctors/stats/ HTTP/1.1" 200 576
+INFO "GET /api/patients/?page=1&page_size=10 HTTP/1.1" 200 5885
+INFO "GET /api/patients/stats/ HTTP/1.1" 200 543
+INFO "GET /api/patients/?page=1&page_size=10 HTTP/1.1" 200 5885
+INFO "GET /api/patients/stats/ HTTP/1.1" 200 543
+INFO "GET /api/patients/?page=1&page_size=10 HTTP/1.1" 200 5885
+INFO "GET /api/patients/stats/ HTTP/1.1" 200 543
+INFO "GET /api/doctors/ HTTP/1.1" 200 2308
+INFO "GET /api/doctors/stats/ HTTP/1.1" 200 576
+INFO "GET /api/patients/?page=1&page_size=10 HTTP/1.1" 200 5885
+INFO "GET /api/patients/stats/ HTTP/1.1" 200 543
+INFO "GET /api/doctors/ HTTP/1.1" 200 2308
+INFO "GET /api/doctors/stats/ HTTP/1.1" 200 576
+INFO "GET /api/patients/stats/ HTTP/1.1" 200 543
+INFO "GET /api/patients/?page=1&page_size=10 HTTP/1.1" 200 5885
+INFO "GET /api/analytics/dashboard/ HTTP/1.1" 200 411
+INFO "GET /api/analytics/dashboard/ HTTP/1.1" 200 411
+INFO "OPTIONS /api/consultations/?scheduled_date=2025-07-18 HTTP/1.1" 200 0
+INFO "GET /api/consultations/?scheduled_date=2025-07-18 HTTP/1.1" 200 534
+INFO "GET /api/analytics/dashboard/ HTTP/1.1" 200 411
+INFO "GET /api/patients/stats/ HTTP/1.1" 200 543
+INFO "GET /api/patients/?page=1&page_size=10 HTTP/1.1" 200 5885
+INFO "GET /api/patients/?page=1&page_size=10 HTTP/1.1" 200 5885
+INFO "GET /api/patients/stats/ HTTP/1.1" 200 543
+INFO "GET /api/patients/?page=1&page_size=10 HTTP/1.1" 200 5885
+INFO "GET /api/patients/stats/ HTTP/1.1" 200 543
+INFO "GET /api/auth/account-type/?phone=2222222222 HTTP/1.1" 200 178
+INFO "POST /api/auth/send-otp/ HTTP/1.1" 200 147
+INFO "POST /api/auth/verify-otp/ HTTP/1.1" 200 700
+INFO "GET /api/consultations/?scheduled_date=2025-07-18 HTTP/1.1" 200 534
+INFO "GET /api/analytics/dashboard/ HTTP/1.1" 200 411
+INFO "GET /api/patients/stats/ HTTP/1.1" 200 543
+INFO "GET /api/patients/?page=1&page_size=10 HTTP/1.1" 200 5885
+INFO "GET /api/patients/stats/ HTTP/1.1" 200 543
+INFO "GET /api/patients/?page=1&page_size=10 HTTP/1.1" 200 5885
+INFO "GET /api/doctors/ HTTP/1.1" 200 2308
+INFO "GET /api/doctors/stats/ HTTP/1.1" 200 576
+INFO "GET /api/doctors/ HTTP/1.1" 200 2308
+INFO "GET /api/doctors/stats/ HTTP/1.1" 200 576
+INFO "GET /api/patients/?page=1&page_size=10 HTTP/1.1" 200 5885
+INFO "GET /api/patients/stats/ HTTP/1.1" 200 543
+INFO "GET /api/patients/?page=1&page_size=10 HTTP/1.1" 200 5885
+INFO "GET /api/patients/stats/ HTTP/1.1" 200 543
+INFO "GET /api/doctors/ HTTP/1.1" 200 2308
+INFO "GET /api/doctors/stats/ HTTP/1.1" 200 576
+INFO "GET /api/doctors/ HTTP/1.1" 200 2308
+INFO "GET /api/doctors/stats/ HTTP/1.1" 200 576
+INFO "GET /api/patients/stats/ HTTP/1.1" 200 543
+INFO "GET /api/patients/?page=1&page_size=10 HTTP/1.1" 200 5885
+INFO "GET /api/doctors/ HTTP/1.1" 200 2308
+INFO "GET /api/doctors/stats/ HTTP/1.1" 200 576
+INFO "GET /api/patients/?page=1&page_size=10 HTTP/1.1" 200 5885
+INFO "GET /api/patients/stats/ HTTP/1.1" 200 543
+INFO "GET /api/doctors/ HTTP/1.1" 200 2308
+INFO "GET /api/doctors/stats/ HTTP/1.1" 200 576
+INFO "GET /api/patients/stats/ HTTP/1.1" 200 543
+INFO "GET /api/patients/?page=1&page_size=10 HTTP/1.1" 200 5885
+INFO "GET /api/patients/?page=1&page_size=10 HTTP/1.1" 200 5885
+INFO "GET /api/patients/stats/ HTTP/1.1" 200 543
