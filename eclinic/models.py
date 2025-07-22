@@ -58,10 +58,10 @@ class Clinic(models.Model):
     accepts_online_consultations = models.BooleanField(default=True)
 
     # Admin (single admin per e-clinic)
-    admin = models.ForeignKey(
+    admin = models.OneToOneField(
         settings.AUTH_USER_MODEL,
         on_delete=models.CASCADE,
-        related_name='administered_clinics',
+        related_name='administered_clinic',
         limit_choices_to={'role': 'admin'}
     )
 
