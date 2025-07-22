@@ -1,4 +1,5 @@
 from rest_framework import status, permissions, filters
+from rest_framework.permissions import BasePermission
 from rest_framework.decorators import api_view, permission_classes, action
 from rest_framework.response import Response
 from rest_framework.views import APIView
@@ -10,6 +11,7 @@ from django.shortcuts import get_object_or_404
 from drf_spectacular.utils import extend_schema, OpenApiParameter
 from drf_spectacular.types import OpenApiTypes
 from datetime import datetime, timedelta
+from django.db import IntegrityError
 
 from authentication.models import User
 from .models import (
@@ -32,10 +34,20 @@ class DoctorPagination(PageNumberPagination):
     max_page_size = 100
 
 
+# Custom permission to allow only admin and superadmin
+class IsAdminOrSuperAdmin(BasePermission):
+    def has_permission(self, request, view):
+        return request.user and request.user.is_authenticated and request.user.role in ['admin', 'superadmin']
+
+
 class DoctorProfileViewSet(ModelViewSet):
     """ViewSet for doctor profile management"""
     queryset = DoctorProfile.objects.all()
-    permission_classes = [permissions.IsAuthenticated]
+    def get_permissions(self):
+        # Only allow admin/superadmin for superadmin endpoints
+        if self.request.path.startswith('/api/doctors/superadmin/'):
+            return [IsAdminOrSuperAdmin()]
+        return [permissions.IsAuthenticated()]
     pagination_class = DoctorPagination
     filter_backends = [filters.SearchFilter, filters.OrderingFilter]
     search_fields = ['user__name', 'specialization', 'qualification']
@@ -265,9 +277,19 @@ class DoctorSlotViewSet(ModelViewSet):
     def create(self, request, *args, **kwargs):
         serializer = self.get_serializer(data=request.data)
         if serializer.is_valid():
-            self.perform_create(serializer)
-            headers = self.get_success_headers(serializer.data)
-            return Response(serializer.data, status=status.HTTP_201_CREATED, headers=headers)
+            try:
+                self.perform_create(serializer)
+                headers = self.get_success_headers(serializer.data)
+                return Response(serializer.data, status=status.HTTP_201_CREATED, headers=headers)
+            except IntegrityError:
+                return Response({
+                    'success': False,
+                    'error': {
+                        'code': 'DUPLICATE_SLOT',
+                        'message': 'A slot with the same date, start time, and end time already exists for this doctor.'
+                    },
+                    'timestamp': timezone.now().isoformat()
+                }, status=status.HTTP_400_BAD_REQUEST)
         return Response({
             'success': False,
             'error': {
@@ -511,8 +533,8 @@ class SuperAdminDoctorManagementView(APIView):
     permission_classes = [permissions.IsAuthenticated]
     
     def get_permissions(self):
-        """Only superadmin can access"""
-        if not self.request.user.is_authenticated or getattr(self.request.user, 'role', None) != 'superadmin':
+        """Allow admin and superadmin to access"""
+        if not self.request.user.is_authenticated or getattr(self.request.user, 'role', None) not in ['admin', 'superadmin']:
             return [permissions.IsAdminUser()]
         return super().get_permissions()
     
