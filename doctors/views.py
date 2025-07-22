@@ -254,6 +254,10 @@ class DoctorSlotViewSet(ModelViewSet):
             queryset = queryset.filter(date__year=year, date__month=month)
         return queryset.order_by('date', 'start_time')
 
+    def perform_create(self, serializer):
+        doctor_id = self.kwargs.get('doctor_id')
+        serializer.save(doctor_id=doctor_id)
+
 
 class DoctorSearchView(APIView):
     """Search doctors with advanced filters"""

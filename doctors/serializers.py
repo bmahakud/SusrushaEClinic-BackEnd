@@ -202,7 +202,8 @@ class DoctorScheduleCreateSerializer(serializers.ModelSerializer):
     def create(self, validated_data):
         """Create schedule for doctor"""
         doctor_id = self.context['view'].kwargs.get('doctor_id')
-        validated_data['doctor_id'] = doctor_id
+        doctor = User.objects.get(id=doctor_id)
+        validated_data['doctor'] = doctor
         return super().create(validated_data)
 
 
@@ -214,6 +215,12 @@ class DoctorSlotSerializer(serializers.ModelSerializer):
             'id', 'doctor', 'date', 'start_time', 'end_time', 'is_available', 'created_at', 'updated_at'
         ]
         read_only_fields = ['id', 'created_at', 'updated_at']
+
+    def create(self, validated_data):
+        doctor_id = self.context['view'].kwargs.get('doctor_id')
+        doctor = User.objects.get(id=doctor_id)
+        validated_data['doctor'] = doctor
+        return super().create(validated_data)
 
     def to_representation(self, instance):
         data = super().to_representation(instance)
