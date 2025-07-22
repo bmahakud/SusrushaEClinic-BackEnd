@@ -1,0 +1,79 @@
+<svg width="400" height="300" viewBox="0 0 400 300" fill="none" xmlns="http://www.w3.org/2000/svg">
+  <defs>
+    <linearGradient id="bgGrad" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" style="stop-color:#8B5CF6;stop-opacity:0.1" />
+      <stop offset="100%" style="stop-color:#A855F7;stop-opacity:0.1" />
+    </linearGradient>
+    <linearGradient id="cardGrad" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" style="stop-color:#FFFFFF;stop-opacity:0.9" />
+      <stop offset="100%" style="stop-color:#F8FAFC;stop-opacity:0.9" />
+    </linearGradient>
+  </defs>
+  
+  <!-- Background -->
+  <rect width="400" height="300" fill="url(#bgGrad)"/>
+  
+  <!-- Medical monitor -->
+  <g transform="translate(100, 80)">
+    <rect x="0" y="0" width="200" height="120" rx="15" fill="url(#cardGrad)" stroke="#8B5CF6" stroke-width="3"/>
+    <rect x="10" y="10" width="180" height="100" rx="8" fill="#1F2937"/>
+    
+    <!-- Heart rate monitor -->
+    <path d="M20 60 L40 50 L60 70 L80 40 L100 60 L120 30 L140 50 L160 40 L180 60" stroke="#10B981" stroke-width="2" fill="none"/>
+    
+    <!-- Data points -->
+    <circle cx="40" cy="50" r="2" fill="#10B981"/>
+    <circle cx="60" cy="70" r="2" fill="#10B981"/>
+    <circle cx="80" cy="40" r="2" fill="#10B981"/>
+    <circle cx="100" cy="60" r="2" fill="#10B981"/>
+    <circle cx="120" cy="30" r="2" fill="#10B981"/>
+    <circle cx="140" cy="50" r="2" fill="#10B981"/>
+    <circle cx="160" cy="40" r="2" fill="#10B981"/>
+    <circle cx="180" cy="60" r="2" fill="#10B981"/>
+  </g>
+  
+  <!-- AI brain symbol -->
+  <g transform="translate(320, 60)">
+    <circle cx="25" cy="25" r="25" fill="#8B5CF6"/>
+    <path d="M15 20 Q25 15 35 20" stroke="white" stroke-width="1.5" fill="none"/>
+    <path d="M15 25 Q25 20 35 25" stroke="white" stroke-width="1.5" fill="none"/>
+    <path d="M15 30 Q25 25 35 30" stroke="white" stroke-width="1.5" fill="none"/>
+    <circle cx="20" cy="18" r="1" fill="white"/>
+    <circle cx="30" cy="18" r="1" fill="white"/>
+    <circle cx="20" cy="28" r="1" fill="white"/>
+    <circle cx="30" cy="28" r="1" fill="white"/>
+  </g>
+  
+  <!-- DNA helix -->
+  <g transform="translate(50, 200)">
+    <path d="M0 0 Q10 -10 20 0 Q30 10 40 0 Q50 -10 60 0" stroke="#8B5CF6" stroke-width="2" fill="none"/>
+    <path d="M0 20 Q10 10 20 20 Q30 30 40 20 Q50 10 60 20" stroke="#A855F7" stroke-width="2" fill="none"/>
+    
+    <!-- Connection lines -->
+    <line x1="0" y1="0" x2="0" y2="20" stroke="#8B5CF6" stroke-width="1"/>
+    <line x1="20" y1="0" x2="20" y2="20" stroke="#8B5CF6" stroke-width="1"/>
+    <line x1="40" y1="0" x2="40" y2="20" stroke="#8B5CF6" stroke-width="1"/>
+    <line x1="60" y1="0" x2="60" y2="20" stroke="#8B5CF6" stroke-width="1"/>
+  </g>
+  
+  <!-- Medical cross -->
+  <g transform="translate(350, 200)">
+    <rect x="15" y="5" width="20" height="40" fill="#8B5CF6"/>
+    <rect x="5" y="15" width="40" height="20" fill="#8B5CF6"/>
+  </g>
+  
+  <!-- Circuit board pattern -->
+  <g transform="translate(250, 220)">
+    <rect x="0" y="0" width="100" height="60" fill="none" stroke="#8B5CF6" stroke-width="1" opacity="0.5"/>
+    <line x1="0" y1="20" x2="100" y2="20" stroke="#8B5CF6" stroke-width="1" opacity="0.5"/>
+    <line x1="0" y1="40" x2="100" y2="40" stroke="#8B5CF6" stroke-width="1" opacity="0.5"/>
+    <line x1="25" y1="0" x2="25" y2="60" stroke="#8B5CF6" stroke-width="1" opacity="0.5"/>
+    <line x1="50" y1="0" x2="50" y2="60" stroke="#8B5CF6" stroke-width="1" opacity="0.5"/>
+    <line x1="75" y1="0" x2="75" y2="60" stroke="#8B5CF6" stroke-width="1" opacity="0.5"/>
+    
+    <!-- Circuit nodes -->
+    <circle cx="25" cy="20" r="3" fill="#8B5CF6"/>
+    <circle cx="50" cy="40" r="3" fill="#8B5CF6"/>
+    <circle cx="75" cy="20" r="3" fill="#8B5CF6"/>
+  </g>
+</svg> 
