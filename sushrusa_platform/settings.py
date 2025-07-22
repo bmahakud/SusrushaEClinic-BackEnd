@@ -322,6 +322,17 @@ STRIPE_SECRET_KEY = os.environ.get('STRIPE_SECRET_KEY', '')
 RAZORPAY_KEY_ID = os.environ.get('RAZORPAY_KEY_ID', '')
 RAZORPAY_KEY_SECRET = os.environ.get('RAZORPAY_KEY_SECRET', '')
 
+# PhonePe Test Credentials
+PHONEPE_MERCHANT_ID = "PGTESTPAYUAT"
+PHONEPE_SALT_KEY = "099eb0cd-02cf-4e2a-8aca-3e6c6aff0399"
+PHONEPE_SALT_INDEX = "1"
+
+# PhonePe Production Credentials
+PHONEPE_PROD_MERCHANT_ID = "M2284KCBRJKOP"
+PHONEPE_PROD_SALT_KEY = "2f031cba-3c25-4c5f-9f8a-f92a8bf7d459"
+PHONEPE_PROD_SALT_INDEX = "1"
+PHONEPE_PROD_PAY_URL = "https://api.phonepe.com/apis/hermes/pg/v1/pay"
+
 
 # File Upload Configuration
 FILE_UPLOAD_MAX_MEMORY_SIZE = 10 * 1024 * 1024  # 10MB

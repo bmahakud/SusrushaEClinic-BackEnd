@@ -11,6 +11,11 @@ from drf_spectacular.utils import extend_schema, OpenApiParameter
 from drf_spectacular.openapi import OpenApiTypes
 from datetime import datetime, timedelta
 import json
+import requests
+import hmac
+import hashlib
+import base64
+from django.conf import settings
 
 from authentication.models import User
 from .models import (
@@ -619,6 +624,82 @@ class PaymentWebhookView(APIView):
                 'success': False,
                 'error': f'Webhook processing failed: {str(e)}'
             }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+
+
+class PaymentInitiateView(APIView):
+    permission_classes = [permissions.IsAuthenticated]
+
+    def post(self, request):
+        consultation_id = request.data.get('consultation_id')
+        amount = request.data.get('amount')
+        # Switch environment automatically: sandbox if DEBUG, production if not
+        if getattr(settings, 'DEBUG', True):
+            env = 'sandbox'
+        else:
+            env = 'prod'
+        if not consultation_id or not amount:
+            return Response({'success': False, 'error': 'consultation_id and amount are required.'}, status=400)
+
+        if env == 'prod':
+            merchant_id = getattr(settings, 'PHONEPE_PROD_MERCHANT_ID', 'YOUR_PROD_MERCHANT_ID')
+            salt_key = getattr(settings, 'PHONEPE_PROD_SALT_KEY', 'YOUR_PROD_SALT_KEY')
+            salt_index = getattr(settings, 'PHONEPE_PROD_SALT_INDEX', '1')
+            phonepe_url = getattr(settings, 'PHONEPE_PROD_PAY_URL', 'https://api.phonepe.com/apis/hermes/pg/v1/pay')
+        else:
+            merchant_id = getattr(settings, 'PHONEPE_MERCHANT_ID', 'YOUR_MERCHANT_ID')
+            salt_key = getattr(settings, 'PHONEPE_SALT_KEY', 'YOUR_SALT_KEY')
+            salt_index = getattr(settings, 'PHONEPE_SALT_INDEX', '1')
+            phonepe_url = "https://api-preprod.phonepe.com/apis/pg-sandbox/pg/v1/pay"
+
+        print(f"[PhonePe DEBUG] Using environment: {env}")
+        print("[PhonePe DEBUG] merchant_id:", merchant_id)
+        print("[PhonePe DEBUG] salt_key:", salt_key)
+        print("[PhonePe DEBUG] salt_index:", salt_index)
+        print("[PhonePe DEBUG] phonepe_url:", phonepe_url)
+
+        # Prepare payload
+        payload = {
+            "merchantId": merchant_id,
+            "merchantTransactionId": f"CONSULT_{consultation_id}",
+            "merchantUserId": str(request.user.id),
+            "amount": int(float(amount) * 100),  # in paise
+            "redirectUrl": "https://yourdomain.com/payment/success/",  # TODO: update to your frontend success URL
+            "redirectMode": "REDIRECT",
+            "callbackUrl": "https://yourdomain.com/api/payments/webhook/",  # TODO: update to your backend webhook
+            "paymentInstrument": {
+                "type": "PAY_PAGE"
+            }
+        }
+        payload_str = json.dumps(payload, separators=(',', ':'))
+        print("[PhonePe DEBUG] payload_str:", payload_str)
+
+        # Generate X-VERIFY header
+        base64_payload = base64.b64encode(payload_str.encode()).decode()
+        string_to_sign = base64_payload + "/pg/v1/pay" + salt_key
+        x_verify = hmac.new(salt_key.encode(), string_to_sign.encode(), hashlib.sha256).hexdigest() + "###" + salt_index
+
+        # Make request to PhonePe
+        headers = {
+            "Content-Type": "application/json",
+            "X-VERIFY": x_verify,
+            "X-MERCHANT-ID": merchant_id,
+        }
+        print("[PhonePe DEBUG] headers:", headers)
+
+        try:
+            response = requests.post(phonepe_url, data=payload_str, headers=headers)
+            print("[PhonePe DEBUG] PhonePe status code:", response.status_code)
+            print("[PhonePe DEBUG] PhonePe response:", response.text)
+            phonepe_data = response.json()
+        except Exception as e:
+            print("[PhonePe DEBUG] Exception:", str(e))
+            return Response({"success": False, "error": f"PhonePe request failed: {str(e)}"}, status=500)
+
+        if phonepe_data.get("success"):
+            payment_url = phonepe_data["data"]["instrumentResponse"]["redirectInfo"]["url"]
+            return Response({"success": True, "payment_url": payment_url})
+        else:
+            return Response({"success": False, "error": phonepe_data.get("message", "PhonePe error")}, status=400)
 
 
 

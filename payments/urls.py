@@ -21,7 +21,9 @@ urlpatterns = [
     
     # Payment webhooks
     path('webhook/', views.PaymentWebhookView.as_view(), name='payment-webhook'),
-    
+
+    # Payment initiation (PhonePe etc.)
+    path('initiate/', views.PaymentInitiateView.as_view(), name='payment-initiate'),
     # Include router URLs
     path('', include(router.urls)),
 ]
