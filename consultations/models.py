@@ -3,6 +3,7 @@ from django.conf import settings
 from django.utils import timezone
 from django.core.validators import MinValueValidator, MaxValueValidator
 import uuid
+from eclinic.models import Clinic
 
 
 class Consultation(models.Model):
@@ -31,6 +32,13 @@ class Consultation(models.Model):
         settings.AUTH_USER_MODEL, 
         on_delete=models.CASCADE, 
         related_name='doctor_consultations'
+    )
+    clinic = models.ForeignKey(
+        Clinic,
+        on_delete=models.CASCADE,
+        related_name='consultations',
+        null=True,
+        blank=True
     )
     
     # Scheduling Information

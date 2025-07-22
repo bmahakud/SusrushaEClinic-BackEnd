@@ -12,6 +12,7 @@ class ConsultationSerializer(serializers.ModelSerializer):
     """Serializer for consultation"""
     patient_name = serializers.CharField(source='patient.name', read_only=True)
     doctor_name = serializers.CharField(source='doctor.name', read_only=True)
+    doctor_meeting_link = serializers.SerializerMethodField(read_only=True)
     
     class Meta:
         model = Consultation
@@ -19,9 +20,15 @@ class ConsultationSerializer(serializers.ModelSerializer):
             'id', 'patient', 'doctor', 'patient_name', 'doctor_name',
             'consultation_type', 'scheduled_date', 'scheduled_time', 'duration',
             'status', 'doctor_notes', 'patient_notes', 'payment_status', 
-            'consultation_fee', 'is_paid', 'created_at', 'updated_at'
+            'consultation_fee', 'is_paid', 'created_at', 'updated_at',
+            'doctor_meeting_link',
         ]
         read_only_fields = ['id', 'created_at', 'updated_at']
+
+    def get_doctor_meeting_link(self, obj):
+        if hasattr(obj, 'doctor') and hasattr(obj.doctor, 'doctor_profile') and hasattr(obj.doctor.doctor_profile, 'meeting_link'):
+            return obj.doctor.doctor_profile.meeting_link
+        return None
 
 
 class ConsultationCreateSerializer(serializers.ModelSerializer):
@@ -40,6 +47,48 @@ class ConsultationCreateSerializer(serializers.ModelSerializer):
         validated_data['status'] = 'scheduled'
         validated_data['payment_status'] = 'pending'
         return super().create(validated_data)
+
+    def validate(self, data):
+        doctor = data['doctor']
+        scheduled_date = data['scheduled_date']
+        scheduled_time = data['scheduled_time']
+        duration = data['duration']
+        clinic = data.get('clinic')
+
+        from datetime import datetime, timedelta
+        start_dt = datetime.combine(scheduled_date, scheduled_time)
+        end_dt = start_dt + timedelta(minutes=duration)
+        new_start = scheduled_time
+        new_end = end_dt.time()
+
+        # Doctor overlap logic
+        overlapping_doctor = Consultation.objects.filter(
+            doctor=doctor,
+            scheduled_date=scheduled_date,
+            status__in=['scheduled', 'in_progress']
+        ).exclude(
+            scheduled_time__gte=new_end
+        ).exclude(
+            scheduled_time__lte=new_start
+        )
+        if overlapping_doctor.exists():
+            raise serializers.ValidationError("This doctor already has a consultation in this time slot.")
+
+        # Clinic overlap logic
+        if clinic:
+            overlapping_clinic = Consultation.objects.filter(
+                clinic=clinic,
+                scheduled_date=scheduled_date,
+                status__in=['scheduled', 'in_progress']
+            ).exclude(
+                scheduled_time__gte=new_end
+            ).exclude(
+                scheduled_time__lte=new_start
+            )
+            if overlapping_clinic.exists():
+                raise serializers.ValidationError("This clinic already has a consultation in this time slot.")
+
+        return data
 
 
 class ConsultationUpdateSerializer(serializers.ModelSerializer):
@@ -225,15 +274,22 @@ class ConsultationListSerializer(serializers.ModelSerializer):
     """Serializer for consultation list view"""
     patient_name = serializers.CharField(source='patient.name', read_only=True)
     doctor_name = serializers.CharField(source='doctor.name', read_only=True)
+    doctor_meeting_link = serializers.SerializerMethodField(read_only=True)
     
     class Meta:
         model = Consultation
         fields = [
             'id', 'patient', 'doctor', 'patient_name', 'doctor_name',
             'consultation_type', 'scheduled_date', 'scheduled_time', 'duration',
-            'status', 'payment_status', 'consultation_fee', 'is_paid', 'created_at'
+            'status', 'payment_status', 'consultation_fee', 'is_paid', 'created_at',
+            'doctor_meeting_link',
         ]
         read_only_fields = ['id', 'created_at']
+
+    def get_doctor_meeting_link(self, obj):
+        if hasattr(obj, 'doctor') and hasattr(obj.doctor, 'doctor_profile') and hasattr(obj.doctor.doctor_profile, 'meeting_link'):
+            return obj.doctor.doctor_profile.meeting_link
+        return None
 
 
 class ConsultationSearchSerializer(serializers.Serializer):
@@ -282,6 +338,7 @@ class ConsultationDetailSerializer(serializers.ModelSerializer):
     """Detailed serializer for consultation with related data"""
     patient_name = serializers.CharField(source='patient.name', read_only=True)
     doctor_name = serializers.CharField(source='doctor.name', read_only=True)
+    doctor_meeting_link = serializers.SerializerMethodField(read_only=True)
     symptoms = ConsultationSymptomSerializer(many=True, read_only=True)
     diagnoses = ConsultationDiagnosisSerializer(many=True, read_only=True)
     vital_signs = ConsultationVitalSignsSerializer(many=True, read_only=True)
@@ -301,9 +358,15 @@ class ConsultationDetailSerializer(serializers.ModelSerializer):
             'doctor_notes', 'patient_notes', 'prescription_given',
             'cancelled_by', 'cancellation_reason', 'cancelled_at',
             'symptoms', 'diagnoses', 'vital_signs', 'attachments', 'notes', 'reschedules',
-            'created_at', 'updated_at'
+            'created_at', 'updated_at',
+            'doctor_meeting_link',
         ]
         read_only_fields = ['id', 'created_at', 'updated_at']
+
+    def get_doctor_meeting_link(self, obj):
+        if hasattr(obj, 'doctor') and hasattr(obj.doctor, 'doctor_profile') and hasattr(obj.doctor.doctor_profile, 'meeting_link'):
+            return obj.doctor.doctor_profile.meeting_link
+        return None
 
 
 

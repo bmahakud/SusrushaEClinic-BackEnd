@@ -14,6 +14,7 @@ class DoctorProfileSerializer(serializers.ModelSerializer):
     user_phone = serializers.CharField(source='user.phone', read_only=True)
     user_email = serializers.CharField(source='user.email', read_only=True)
     experience_years = serializers.ReadOnlyField()
+    meeting_link = serializers.SerializerMethodField(read_only=True)
     # Note: Using 'rating' field from model instead of 'average_rating'
     
     class Meta:
@@ -26,9 +27,13 @@ class DoctorProfileSerializer(serializers.ModelSerializer):
             'is_verified', 'consultation_duration',
             'is_online_consultation_available', 'is_active',
             'rating', 'total_reviews', 'clinic_name', 'clinic_address',
-            'is_accepting_patients', 'created_at', 'updated_at'
+            'is_accepting_patients', 'created_at', 'updated_at',
+            'meeting_link'
         ]
         read_only_fields = ['id', 'user', 'is_verified', 'rating', 'total_reviews', 'created_at', 'updated_at']
+
+    def get_meeting_link(self, obj):
+        return obj.meeting_link
 
 
 class DoctorProfileCreateSerializer(serializers.ModelSerializer):
@@ -231,5 +236,28 @@ class DoctorSlotSerializer(serializers.ModelSerializer):
                 dt = getattr(instance, field)
                 if timezone.is_aware(dt):
                     data[field] = dt.astimezone(ist).isoformat()
+        return data
+
+    def validate(self, data):
+        doctor = data['doctor']
+        date = data['date']
+        start_time = data['start_time']
+        end_time = data['end_time']
+
+        from consultations.models import Consultation
+        # Check for overlapping consultations
+        overlapping = Consultation.objects.filter(
+            doctor=doctor,
+            scheduled_date=date,
+            status__in=['scheduled', 'in_progress']
+        ).filter(
+            scheduled_time__lt=end_time,
+        ).exclude(
+            scheduled_time__gte=end_time
+        )
+
+        if overlapping.exists():
+            raise serializers.ValidationError("This doctor already has a consultation in this time slot.")
+
         return data
 

@@ -93,6 +93,11 @@ class DoctorProfile(models.Model):
         """Get number of completed consultations"""
         return self.user.doctor_consultations.filter(status='completed').count()
 
+    @property
+    def meeting_link(self):
+        # Use the user's unique id (e.g., DOC001) for the meeting link
+        return f"http://meet.diracai.com/{self.user.id}"
+
 
 class DoctorSchedule(models.Model):
     """Weekly schedule for doctors"""
