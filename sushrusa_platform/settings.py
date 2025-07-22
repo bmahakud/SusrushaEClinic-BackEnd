@@ -31,6 +31,7 @@ ALLOWED_HOSTS = [
     'localhost',
     '127.0.0.1',
     '139.59.21.121',
+    'sushrusaeclinic.com',
 ]  # Allow all hosts for development and deployment
 
 
