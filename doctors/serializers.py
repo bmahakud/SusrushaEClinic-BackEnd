@@ -209,12 +209,13 @@ class DoctorScheduleCreateSerializer(serializers.ModelSerializer):
 
 class DoctorSlotSerializer(serializers.ModelSerializer):
     """Serializer for doctor slots (multiple slots per day)"""
+    doctor = serializers.PrimaryKeyRelatedField(read_only=True)
     class Meta:
         model = DoctorSlot
         fields = [
             'id', 'doctor', 'date', 'start_time', 'end_time', 'is_available', 'created_at', 'updated_at'
         ]
-        read_only_fields = ['id', 'created_at', 'updated_at']
+        read_only_fields = ['id', 'doctor', 'created_at', 'updated_at']
 
     def create(self, validated_data):
         doctor_id = self.context['view'].kwargs.get('doctor_id')

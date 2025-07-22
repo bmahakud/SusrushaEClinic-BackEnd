@@ -244,6 +244,10 @@ class DoctorSlotViewSet(ModelViewSet):
     permission_classes = [permissions.IsAuthenticated]
     serializer_class = DoctorSlotSerializer
 
+    def get_serializer(self, *args, **kwargs):
+        kwargs['context'] = self.get_serializer_context()
+        return super().get_serializer(*args, **kwargs)
+
     def get_queryset(self):
         doctor_id = self.kwargs.get('doctor_id')
         queryset = DoctorSlot.objects.filter(doctor_id=doctor_id)
@@ -257,6 +261,22 @@ class DoctorSlotViewSet(ModelViewSet):
     def perform_create(self, serializer):
         doctor_id = self.kwargs.get('doctor_id')
         serializer.save(doctor_id=doctor_id)
+
+    def create(self, request, *args, **kwargs):
+        serializer = self.get_serializer(data=request.data)
+        if serializer.is_valid():
+            self.perform_create(serializer)
+            headers = self.get_success_headers(serializer.data)
+            return Response(serializer.data, status=status.HTTP_201_CREATED, headers=headers)
+        return Response({
+            'success': False,
+            'error': {
+                'code': 'VALIDATION_ERROR',
+                'message': 'Invalid data provided',
+                'details': serializer.errors
+            },
+            'timestamp': timezone.now().isoformat()
+        }, status=status.HTTP_400_BAD_REQUEST)
 
 
 class DoctorSearchView(APIView):
