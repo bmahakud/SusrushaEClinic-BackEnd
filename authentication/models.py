@@ -97,6 +97,10 @@ class User(AbstractBaseUser, PermissionsMixin):
         verbose_name_plural = 'Users'
     
     def save(self, *args, **kwargs):
+        # Normalize phone number to +91XXXXXXXXXX format
+        if self.phone:
+            from .utils import format_phone_number
+            self.phone = format_phone_number(self.phone)
         if not self.id:
             # Generate user ID based on role
             if self.role == 'patient':
@@ -107,7 +111,6 @@ class User(AbstractBaseUser, PermissionsMixin):
                 prefix = 'ADM'
             else:
                 prefix = 'USR'
-            
             # Get the last user with this prefix
             last_user = User.objects.filter(id__startswith=prefix).order_by('id').last()
             if last_user:
@@ -115,9 +118,7 @@ class User(AbstractBaseUser, PermissionsMixin):
                 new_number = last_number + 1
             else:
                 new_number = 1
-            
             self.id = f"{prefix}{new_number:03d}"
-        
         super().save(*args, **kwargs)
     
     def __str__(self):
