@@ -99,12 +99,28 @@ WSGI_APPLICATION = 'sushrusa_platform.wsgi.application'
 
 DATABASES = {
     'default': {
-        'ENGINE': 'django.db.backends.sqlite3',
-        'NAME': BASE_DIR / 'db.sqlite3',
+        'ENGINE': 'django.db.backends.postgresql',
+        'NAME': os.environ.get('POSTGRES_DB', 'sushrusa_db'),
+        'USER': os.environ.get('POSTGRES_USER', 'sushrusa_user'),
+        'PASSWORD': os.environ.get('POSTGRES_PASSWORD', 'sushrusa_pass'),
+        'HOST': os.environ.get('POSTGRES_HOST', 'localhost'),
+        'PORT': os.environ.get('POSTGRES_PORT', '5432'),
     }
 }
 
-# For production, use PostgreSQL
+# Example for local development (uncomment and edit as needed):
+# DATABASES = {
+#     'default': {
+#         'ENGINE': 'django.db.backends.postgresql',
+#         'NAME': 'sushrusa_db',
+#         'USER': 'sushrusa_user',
+#         'PASSWORD': 'sushrusa_pass',
+#         'HOST': 'localhost',
+#         'PORT': '5432',
+#     }
+# }
+
+# For production, use DATABASE_URL if set
 if os.environ.get('DATABASE_URL'):
     import dj_database_url
     DATABASES['default'] = dj_database_url.parse(os.environ.get('DATABASE_URL'))
