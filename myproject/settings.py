@@ -322,10 +322,13 @@ STRIPE_SECRET_KEY = os.environ.get('STRIPE_SECRET_KEY', '')
 RAZORPAY_KEY_ID = os.environ.get('RAZORPAY_KEY_ID', '')
 RAZORPAY_KEY_SECRET = os.environ.get('RAZORPAY_KEY_SECRET', '')
 
-# PhonePe Test Credentials (updated)
-PHONEPE_MERCHANT_ID = "TEST-M237Y0F2LTMHC_25072"
-PHONEPE_SALT_KEY = "NzhlMmNkNmEtN2E3ZC00ZTAyLTIkODEtNDNlYWMwOWVhM2Qz"
+# PhonePe Test Credentials (Official UAT Sandbox)
+PHONEPE_MERCHANT_ID = "PGTESTPAYUAT86"
+PHONEPE_SALT_KEY = "96434309-7796-489d-8924-ab56988a6076"
 PHONEPE_SALT_INDEX = "1"
+
+# PhonePe UAT Sandbox URL
+PHONEPE_SANDBOX_PAY_URL = "https://api-preprod.phonepe.com/apis/pg-sandbox/pg/v1/pay"
 
 # PhonePe Production Credentials
 PHONEPE_PROD_MERCHANT_ID = "M2284KCBRJKOP"

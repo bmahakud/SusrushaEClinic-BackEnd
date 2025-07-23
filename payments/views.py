@@ -649,7 +649,7 @@ class PaymentInitiateView(APIView):
             merchant_id = getattr(settings, 'PHONEPE_MERCHANT_ID', 'YOUR_MERCHANT_ID')
             salt_key = getattr(settings, 'PHONEPE_SALT_KEY', 'YOUR_SALT_KEY')
             salt_index = getattr(settings, 'PHONEPE_SALT_INDEX', '1')
-            phonepe_url = "https://api-preprod.phonepe.com/apis/pg-sandbox/pg/v1/pay"
+            phonepe_url = getattr(settings, 'PHONEPE_SANDBOX_PAY_URL', 'https://api-preprod.phonepe.com/apis/pg-sandbox/pg/v1/pay')
 
         print(f"[PhonePe DEBUG] Using environment: {env}")
         print("[PhonePe DEBUG] merchant_id:", merchant_id)
