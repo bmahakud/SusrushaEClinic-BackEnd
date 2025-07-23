@@ -2,6 +2,7 @@ import random
 from django.core.management.base import BaseCommand
 from authentication.models import User
 from doctors.models import DoctorProfile
+from django.contrib.auth.models import make_random_password
 
 class Command(BaseCommand):
     help = 'Create 10 verified doctor accounts and profiles with realistic Odia details.'
@@ -46,7 +47,7 @@ class Command(BaseCommand):
                     'city': city,
                     'state': 'Odisha',
                     'country': 'India',
-                    'password': User.objects.make_random_password(),
+                    'password': make_random_password(),
                 }
             )
             if not created and user.role != 'doctor':
