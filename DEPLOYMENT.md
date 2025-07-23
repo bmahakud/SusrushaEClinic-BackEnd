@@ -133,10 +133,10 @@ The API will be available at `http://localhost:8000/`
 
 ```bash
 # In a new terminal
-celery -A sushrusa_platform worker --loglevel=info
+celery -A myproject worker --loglevel=info
 
 # In another terminal for beat scheduler
-celery -A sushrusa_platform beat --loglevel=info
+celery -A myproject beat --loglevel=info
 ```
 
 ## Docker Deployment
@@ -307,7 +307,7 @@ Group=sushrusa
 WorkingDirectory=/home/sushrusa/sushrusa_backend
 Environment=PATH=/home/sushrusa/sushrusa_backend/venv/bin
 EnvironmentFile=/home/sushrusa/sushrusa_backend/.env.production
-ExecStart=/home/sushrusa/sushrusa_backend/venv/bin/gunicorn --config gunicorn.conf.py sushrusa_platform.wsgi:application
+ExecStart=/home/sushrusa/sushrusa_backend/venv/bin/gunicorn --config gunicorn.conf.py myproject.wsgi:application
 ExecReload=/bin/kill -s HUP $MAINPID
 Restart=always
 RestartSec=3
@@ -329,7 +329,7 @@ Group=sushrusa
 WorkingDirectory=/home/sushrusa/sushrusa_backend
 Environment=PATH=/home/sushrusa/sushrusa_backend/venv/bin
 EnvironmentFile=/home/sushrusa/sushrusa_backend/.env.production
-ExecStart=/home/sushrusa/sushrusa_backend/venv/bin/celery -A sushrusa_platform worker --loglevel=info
+ExecStart=/home/sushrusa/sushrusa_backend/venv/bin/celery -A myproject worker --loglevel=info
 Restart=always
 RestartSec=3
 

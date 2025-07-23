@@ -108,7 +108,7 @@ Sushrusa is a comprehensive healthcare platform that connects patients with heal
 
 ```
 sushrusa_backend/
-├── sushrusa_platform/          # Main project configuration
+├── myproject/          # Main project configuration
 │   ├── settings.py             # Django settings
 │   ├── urls.py                 # Main URL configuration
 │   └── wsgi.py                 # WSGI configuration
@@ -495,7 +495,7 @@ pip install -r requirements.txt
 
 2. **Configure environment**
 ```bash
-export DJANGO_SETTINGS_MODULE=sushrusa_platform.settings.production
+export DJANGO_SETTINGS_MODULE=myproject.settings.production
 ```
 
 3. **Collect static files**
@@ -510,7 +510,7 @@ python manage.py migrate
 
 5. **Start with Gunicorn**
 ```bash
-gunicorn sushrusa_platform.wsgi:application --bind 0.0.0.0:8000
+gunicorn myproject.wsgi:application --bind 0.0.0.0:8000
 ```
 
 ### Environment-Specific Settings
