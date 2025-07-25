@@ -7,6 +7,7 @@ from django.core.mail import send_mail
 from django.template.loader import render_to_string
 from django.utils.html import strip_tags
 import logging
+import requests
 
 logger = logging.getLogger(__name__)
 
@@ -16,38 +17,42 @@ def generate_otp(length=6):
     return ''.join(random.choices(string.digits, k=length))
 
 
-def send_otp_sms(phone, otp, purpose='login'):
-    """Send OTP via SMS using configured SMS backend"""
+def send_otp_via_msg91(phone, otp, template_id, authkey, otp_length=5, extra_params=None):
+    """Send OTP via MSG91 API"""
+    url = 'https://control.msg91.com/api/v5/otp'
+    payload = {
+        'template_id': template_id,
+        'mobile': phone,
+        'authkey': authkey,
+        'otp': otp,
+        'otp_length': otp_length
+    }
+    if extra_params:
+        payload.update(extra_params)
+    headers = {'Content-Type': 'application/JSON'}
     try:
-        # Format message based on purpose
-        if purpose == 'login':
-            message = f"Your Sushrusa login OTP is: {otp}. Valid for 5 minutes. Do not share with anyone."
-        elif purpose == 'registration':
-            message = f"Welcome to Sushrusa! Your verification OTP is: {otp}. Valid for 5 minutes."
-        else:
-            message = f"Your Sushrusa OTP is: {otp}. Valid for 5 minutes."
-        
-        # TODO: Implement actual SMS sending based on configured backend
-        # For now, just log the OTP (remove in production)
-        logger.info(f"SMS OTP for {phone}: {otp}")
-        
-        # Example implementations for different SMS providers:
-        
-        # Twilio implementation
-        if hasattr(settings, 'TWILIO_ACCOUNT_SID') and settings.TWILIO_ACCOUNT_SID:
-            return send_otp_via_twilio(phone, message)
-        
-        # AWS SNS implementation
-        elif hasattr(settings, 'AWS_SNS_REGION') and settings.AWS_SNS_REGION:
-            return send_otp_via_aws_sns(phone, message)
-        
-        # Default: Log only (for development)
-        else:
-            logger.info(f"OTP SMS would be sent to {phone}: {message}")
-            return True
-            
+        response = requests.post(url, json=payload, headers=headers, timeout=10)
+        response.raise_for_status()
+        return True
     except Exception as e:
-        logger.error(f"Failed to send SMS OTP to {phone}: {str(e)}")
+        logger.error(f"MSG91 OTP send failed for {phone}: {str(e)}")
+        return False
+
+
+def send_otp_sms(phone, otp, purpose='login'):
+    """Send OTP via SMS using MSG91"""
+    try:
+        # Format message based on purpose (optional, MSG91 uses template)
+        # Get MSG91 config from settings
+        template_id = getattr(settings, 'MSG91_TEMPLATE_ID', None)
+        authkey = getattr(settings, 'MSG91_AUTHKEY', None)
+        otp_length = len(otp)
+        if not template_id or not authkey:
+            logger.error('MSG91 credentials not set in settings.')
+            return False
+        return send_otp_via_msg91(phone, otp, template_id, authkey, otp_length)
+    except Exception as e:
+        logger.error(f"Failed to send OTP via MSG91 to {phone}: {str(e)}")
         return False
 
 

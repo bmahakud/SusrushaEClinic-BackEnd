@@ -10,6 +10,7 @@ from drf_spectacular.utils import extend_schema, OpenApiParameter
 from drf_spectacular.types import OpenApiTypes
 from datetime import datetime, timedelta
 from rest_framework.decorators import action
+from rest_framework.exceptions import PermissionDenied
 
 from .models import Clinic
 from .serializers import ClinicSerializer, ClinicCreateSerializer
@@ -50,7 +51,12 @@ class ClinicViewSet(ModelViewSet):
             return queryset.filter(is_active=True)
 
     def perform_create(self, serializer):
-        serializer.save(admin=self.request.user)
+        user = self.request.user
+        # Only superadmin can create clinics
+        if hasattr(user, 'role') and user.role == 'superadmin':
+            serializer.save()
+        else:
+            raise PermissionDenied('Only superadmin can create eClinics.')
 
     def perform_update(self, serializer):
         serializer.save()

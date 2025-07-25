@@ -4,8 +4,10 @@ from django.utils import timezone
 from datetime import timedelta
 import random
 import string
+import hashlib
 from .models import User, OTP, UserSession
 from django.conf import settings
+from .utils import send_otp_sms
 
 
 class SendOTPSerializer(serializers.Serializer):
@@ -32,29 +34,31 @@ class SendOTPSerializer(serializers.Serializer):
         """Create and send OTP"""
         phone = validated_data['phone']
         purpose = validated_data['purpose']
-        
+
         # Generate 6-digit OTP
         otp_code = ''.join(random.choices(string.digits, k=6))
-        
+        # Hash the OTP
+        otp_hash = hashlib.sha256(otp_code.encode('utf-8')).hexdigest()
+
         # Set expiry time (5 minutes from now)
         expires_at = timezone.now() + timedelta(minutes=5)
-        
+
         # Invalidate previous OTPs for this phone
         OTP.objects.filter(phone=phone, purpose=purpose, is_used=False).update(is_used=True)
-        
-        # Create new OTP
+
+        # Create new OTP (store hash)
         otp = OTP.objects.create(
             phone=phone,
-            otp=otp_code,
+            otp=otp_hash,
             purpose=purpose,
             expires_at=expires_at
         )
-        
-        # TODO: Send OTP via SMS/Email
-        # For now, we'll just return the OTP (remove in production)
+
+        # Send OTP via SMS (production)
+        send_otp_sms(phone, otp_code, purpose)
+
         return {
             'phone': phone,
-            'otp': otp_code,  # Remove this in production
             'expires_in': 300,
             'message': 'OTP sent successfully'
         }
@@ -84,35 +88,38 @@ class VerifyOTPSerializer(serializers.Serializer):
         """Validate OTP and return user"""
         phone = attrs['phone']
         otp_code = attrs['otp']
-        
-        # Allow test OTP in development
-        if getattr(settings, 'DEBUG', False) and otp_code == '999999':
-            user, created = User.objects.get_or_create(
-                phone=phone,
-                defaults={
-                    'name': f'User {phone[-4:]}',
-                    'role': 'patient'
-                }
-            )
-            attrs['user'] = user
-            attrs['is_new_user'] = created
-            return attrs
 
-        # Find valid OTP
+        # Remove test OTP bypass in production
+        # if getattr(settings, 'DEBUG', False) and otp_code == '999999':
+        #     user, created = User.objects.get_or_create(
+        #         phone=phone,
+        #         defaults={
+        #             'name': f'User {phone[-4:]}',
+        #             'role': 'patient'
+        #         }
+        #     )
+        #     attrs['user'] = user
+        #     attrs['is_new_user'] = created
+        #     return attrs
+
+        # Hash the provided OTP
+        otp_hash = hashlib.sha256(otp_code.encode('utf-8')).hexdigest()
+
+        # Find valid OTP (by hash)
         try:
             otp = OTP.objects.get(
                 phone=phone,
-                otp=otp_code,
+                otp=otp_hash,
                 is_used=False,
                 expires_at__gt=timezone.now()
             )
         except OTP.DoesNotExist:
             raise serializers.ValidationError('Invalid or expired OTP')
-        
+
         # Mark OTP as used
         otp.is_used = True
         otp.save()
-        
+
         # Get or create user
         user, created = User.objects.get_or_create(
             phone=phone,
@@ -121,7 +128,7 @@ class VerifyOTPSerializer(serializers.Serializer):
                 'role': 'patient'  # Default role
             }
         )
-        
+
         attrs['user'] = user
         attrs['is_new_user'] = created
         return attrs

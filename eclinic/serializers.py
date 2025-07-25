@@ -9,7 +9,8 @@ from .models import (
 
 
 class ClinicSerializer(serializers.ModelSerializer):
-    admin = serializers.PrimaryKeyRelatedField(read_only=True)
+    admin = serializers.PrimaryKeyRelatedField(queryset=User.objects.filter(role='admin'), required=True)
+    admin_name = serializers.CharField(source='admin.name', read_only=True)
 
     class Meta:
         model = Clinic
@@ -22,11 +23,26 @@ class ClinicSerializer(serializers.ModelSerializer):
             'registration_number', 'license_number', 'accreditation',
             'logo', 'cover_image', 'gallery_images',
             'is_active', 'is_verified', 'accepts_online_consultations',
-            'admin', 'created_at', 'updated_at'
+            'admin', 'admin_name', 'created_at', 'updated_at'
         ]
         read_only_fields = ['id', 'created_at', 'updated_at', 'is_verified']
 
+    def validate_admin(self, value):
+        # Only superadmin can change admin
+        request = self.context.get('request')
+        if request and request.method in ['PUT', 'PATCH']:
+            user = request.user
+            if not hasattr(user, 'role') or user.role != 'superadmin':
+                raise serializers.ValidationError('Only superadmin can change the admin of a clinic.')
+        # Check if this admin is already assigned to another clinic (exclude current clinic)
+        clinic_id = self.instance.id if self.instance else None
+        if Clinic.objects.filter(admin=value).exclude(id=clinic_id).exists():
+            raise serializers.ValidationError('This admin is already assigned to another clinic.')
+        return value
+
 class ClinicCreateSerializer(serializers.ModelSerializer):
+    admin = serializers.PrimaryKeyRelatedField(queryset=User.objects.filter(role='admin'), required=True)
+
     class Meta:
         model = Clinic
         fields = [
@@ -38,18 +54,18 @@ class ClinicCreateSerializer(serializers.ModelSerializer):
             'registration_number', 'license_number', 'accreditation',
             'logo', 'cover_image', 'gallery_images',
             'is_active', 'accepts_online_consultations',
+            'admin',
         ]
 
     def create(self, validated_data):
-        # Set admin from context (request.user)
-        request = self.context.get('request')
-        if request and hasattr(request, 'user'):
-            validated_data['admin'] = request.user
-        
-        # Auto-verify the clinic when created
         validated_data['is_verified'] = True
-        
         return super().create(validated_data)
+
+    def validate_admin(self, value):
+        # Check if this admin is already assigned to a clinic
+        if Clinic.objects.filter(admin=value).exists():
+            raise serializers.ValidationError("This admin is already assigned to another clinic.")
+        return value
 
 
 class ClinicServiceSerializer(serializers.ModelSerializer):

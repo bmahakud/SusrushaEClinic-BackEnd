@@ -143,7 +143,7 @@ class OTP(models.Model):
     """Model to store OTP for phone verification"""
     
     phone = models.CharField(max_length=17)
-    otp = models.CharField(max_length=6)
+    otp = models.CharField(max_length=64)
     purpose = models.CharField(max_length=20, choices=[
         ('login', 'Login'),
         ('registration', 'Registration'),
