@@ -6,6 +6,7 @@ from .models import (
     DoctorProfile, DoctorEducation, DoctorExperience, 
     DoctorDocument, DoctorSchedule, DoctorReview, DoctorSlot
 )
+from utils.signed_urls import get_signed_media_url
 
 
 class DoctorProfileSerializer(serializers.ModelSerializer):
@@ -15,12 +16,14 @@ class DoctorProfileSerializer(serializers.ModelSerializer):
     user_email = serializers.CharField(source='user.email', read_only=True)
     experience_years = serializers.ReadOnlyField()
     meeting_link = serializers.SerializerMethodField(read_only=True)
+    profile_picture = serializers.SerializerMethodField()
     # Note: Using 'rating' field from model instead of 'average_rating'
     
     class Meta:
         model = DoctorProfile
         fields = [
             'id', 'user', 'user_name', 'user_phone', 'user_email',
+            'profile_picture',
             'license_number', 'qualification', 'specialization', 'sub_specialization',
             'experience_years', 'consultation_fee', 'online_consultation_fee',
             'languages_spoken', 'bio', 'achievements',
@@ -34,6 +37,12 @@ class DoctorProfileSerializer(serializers.ModelSerializer):
 
     def get_meeting_link(self, obj):
         return obj.meeting_link
+    
+    def get_profile_picture(self, obj):
+        """Generate signed URL for profile picture"""
+        if obj.user.profile_picture:
+            return get_signed_media_url(str(obj.user.profile_picture))
+        return None
 
 
 class DoctorProfileCreateSerializer(serializers.ModelSerializer):
@@ -129,11 +138,13 @@ class DoctorListSerializer(serializers.ModelSerializer):
     user_phone = serializers.CharField(source='user.phone', read_only=True)
     user_email = serializers.CharField(source='user.email', read_only=True)
     experience_years = serializers.ReadOnlyField()
+    profile_picture = serializers.SerializerMethodField()
     
     class Meta:
         model = DoctorProfile
         fields = [
             'id', 'user', 'user_name', 'user_phone', 'user_email',
+            'profile_picture',
             'license_number', 'qualification', 'specialization', 'sub_specialization',
             'experience_years', 'consultation_fee', 'online_consultation_fee',
             'languages_spoken', 'bio', 'achievements',
@@ -142,6 +153,12 @@ class DoctorListSerializer(serializers.ModelSerializer):
             'rating', 'total_reviews', 'clinic_name', 'clinic_address',
             'is_accepting_patients', 'created_at', 'updated_at'
         ]
+    
+    def get_profile_picture(self, obj):
+        """Generate signed URL for profile picture"""
+        if obj.user.profile_picture:
+            return get_signed_media_url(str(obj.user.profile_picture))
+        return None
 
 
 class DoctorSearchSerializer(serializers.Serializer):

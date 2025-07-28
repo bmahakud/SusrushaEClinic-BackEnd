@@ -786,7 +786,7 @@ class AdminManagementView(APIView):
     @extend_schema(
         parameters=[
             OpenApiParameter('search', OpenApiTypes.STR, description='Search by name, phone, or email'),
-            OpenApiParameter('status', OpenApiTypes.STR, description='Filter by status: active, inactive, all'),
+            OpenApiParameter('status', OpenApiTypes.STR, description='Filter by status: active, all (inactive removed since we use hard delete)'),
             OpenApiParameter('sort_by', OpenApiTypes.STR, description='Sort by: name, date_joined, last_login'),
             OpenApiParameter('sort_order', OpenApiTypes.STR, description='Sort order: asc, desc'),
             OpenApiParameter('page', OpenApiTypes.INT, description='Page number'),
@@ -808,11 +808,10 @@ class AdminManagementView(APIView):
         # Build queryset
         queryset = User.objects.filter(role='admin')
         
-        # Apply status filter
+        # Apply status filter (only active since we use hard delete now)
         if status_filter == 'active':
             queryset = queryset.filter(is_active=True)
-        elif status_filter == 'inactive':
-            queryset = queryset.filter(is_active=False)
+        # Note: 'inactive' filter removed since we now use hard delete
         
         # Apply search filter
         if search_query:
@@ -1027,13 +1026,12 @@ class AdminDetailView(APIView):
                     'timestamp': timezone.now().isoformat()
                 }, status=status.HTTP_400_BAD_REQUEST)
             
-            # Soft delete - set as inactive instead of hard delete
-            admin.is_active = False
-            admin.save()
+            # Hard delete - permanently remove the admin account
+            admin.delete()
             
             return Response({
                 'success': True,
-                'message': 'Admin account deactivated successfully',
+                'message': 'Admin account deleted successfully',
                 'timestamp': timezone.now().isoformat()
             }, status=status.HTTP_200_OK)
             

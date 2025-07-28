@@ -30,7 +30,7 @@ class ClinicAdmin(admin.ModelAdmin):
             'fields': ('registration_number', 'license_number', 'accreditation')
         }),
         ('Media', {
-            'fields': ('logo', 'cover_image', 'gallery_images')
+            'fields': ('cover_image', 'gallery_images')
         }),
         ('Status', {
             'fields': ('is_active', 'is_verified', 'accepts_online_consultations')

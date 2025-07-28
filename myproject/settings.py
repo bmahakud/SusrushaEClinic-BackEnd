@@ -17,7 +17,6 @@ from datetime import timedelta
 # Build paths inside the project like this: BASE_DIR / 'subdir'.
 BASE_DIR = Path(__file__).resolve().parent.parent
 
-
 # Quick-start development settings - unsuitable for production
 # See https://docs.djangoproject.com/en/5.2/howto/deployment/checklist/
 
@@ -33,7 +32,6 @@ ALLOWED_HOSTS = [
     '139.59.21.121',
     'sushrusaeclinic.com',
 ]  # Allow all hosts for development and deployment
-
 
 # Application definition
 
@@ -53,6 +51,7 @@ THIRD_PARTY_APPS = [
     'corsheaders',
     'django_filters',
     'drf_spectacular',
+    'storages',
 ]
 
 LOCAL_APPS = [
@@ -98,7 +97,6 @@ TEMPLATES = [
 
 WSGI_APPLICATION = 'myproject.wsgi.application'
 
-
 # Database
 # https://docs.djangoproject.com/en/5.2/ref/settings/#databases
 
@@ -130,10 +128,8 @@ if os.environ.get('DATABASE_URL'):
     import dj_database_url
     DATABASES['default'] = dj_database_url.parse(os.environ.get('DATABASE_URL'))
 
-
 # Custom User Model
 AUTH_USER_MODEL = 'authentication.User'
-
 
 # Password validation
 # https://docs.djangoproject.com/en/5.2/ref/settings/#auth-password-validators
@@ -153,7 +149,6 @@ AUTH_PASSWORD_VALIDATORS = [
     },
 ]
 
-
 # Internationalization
 # https://docs.djangoproject.com/en/5.2/topics/i18n/
 
@@ -165,25 +160,15 @@ USE_I18N = True
 
 USE_TZ = True
 
-
 # Static files (CSS, JavaScript, Images)
 # https://docs.djangoproject.com/en/5.2/howto/static-files/
 
-STATIC_URL = '/static/'
-STATICFILES_DIRS = [
-    BASE_DIR / 'build',
-    BASE_DIR / 'build' / 'assets',
-]
-STATIC_ROOT = BASE_DIR / 'staticfiles'
-MEDIA_URL = '/media/'
-MEDIA_ROOT = BASE_DIR / 'media'
-
+# Note: STATICFILES_DIRS and STATIC_URL are configured in the AWS/Local storage section below
 
 # Default primary key field type
 # https://docs.djangoproject.com/en/5.2/ref/settings/#default-auto-field
 
 DEFAULT_AUTO_FIELD = 'django.db.models.BigAutoField'
-
 
 # Django REST Framework Configuration
 REST_FRAMEWORK = {
@@ -210,7 +195,6 @@ REST_FRAMEWORK = {
     ],
     'DEFAULT_SCHEMA_CLASS': 'drf_spectacular.openapi.AutoSchema',
 }
-
 
 # JWT Configuration
 SIMPLE_JWT = {
@@ -245,7 +229,6 @@ SIMPLE_JWT = {
     'SLIDING_TOKEN_REFRESH_LIFETIME': timedelta(days=1),
 }
 
-
 # CORS Configuration
 CORS_ALLOW_ALL_ORIGINS = True
 CORS_ALLOW_CREDENTIALS = True
@@ -269,7 +252,6 @@ CORS_ALLOW_HEADERS = [
     'x-requested-with',
 ]
 
-
 # API Documentation Configuration
 SPECTACULAR_SETTINGS = {
     'TITLE': 'Sushrusa Healthcare Platform API',
@@ -280,7 +262,6 @@ SPECTACULAR_SETTINGS = {
     'SCHEMA_PATH_PREFIX': '/api/',
 }
 
-
 # Celery Configuration (for background tasks)
 CELERY_BROKER_URL = os.environ.get('REDIS_URL', 'redis://localhost:6379/0')
 CELERY_RESULT_BACKEND = os.environ.get('REDIS_URL', 'redis://localhost:6379/0')
@@ -289,7 +270,6 @@ CELERY_TASK_SERIALIZER = 'json'
 CELERY_RESULT_SERIALIZER = 'json'
 CELERY_TIMEZONE = TIME_ZONE
 
-
 # Cache Configuration
 CACHES = {
     'default': {
@@ -297,7 +277,6 @@ CACHES = {
         'LOCATION': os.environ.get('REDIS_URL', 'redis://127.0.0.1:6379/1'),
     }
 }
-
 
 # Email Configuration (for OTP sending)
 EMAIL_BACKEND = 'django.core.mail.backends.smtp.EmailBackend'
@@ -308,13 +287,11 @@ EMAIL_HOST_USER = os.environ.get('EMAIL_HOST_USER', '')
 EMAIL_HOST_PASSWORD = os.environ.get('EMAIL_HOST_PASSWORD', '')
 DEFAULT_FROM_EMAIL = os.environ.get('DEFAULT_FROM_EMAIL', 'noreply@sushrusa.com')
 
-
 # SMS Configuration (for OTP sending)
 SMS_BACKEND = os.environ.get('SMS_BACKEND', 'twilio')  # twilio, aws_sns, etc.
 TWILIO_ACCOUNT_SID = os.environ.get('TWILIO_ACCOUNT_SID', '')
 TWILIO_AUTH_TOKEN = os.environ.get('TWILIO_AUTH_TOKEN', '')
 TWILIO_PHONE_NUMBER = os.environ.get('TWILIO_PHONE_NUMBER', '')
-
 
 # Payment Gateway Configuration
 STRIPE_PUBLISHABLE_KEY = os.environ.get('STRIPE_PUBLISHABLE_KEY', '')
@@ -336,11 +313,9 @@ PHONEPE_PROD_SALT_KEY = "2f031cba-3c25-4c5f-9f8a-f92a8bf7d459"
 PHONEPE_PROD_SALT_INDEX = "1"
 PHONEPE_PROD_PAY_URL = "https://api.phonepe.com/apis/hermes/pg/v1/pay"
 
-
 # File Upload Configuration
 FILE_UPLOAD_MAX_MEMORY_SIZE = 10 * 1024 * 1024  # 10MB
 DATA_UPLOAD_MAX_MEMORY_SIZE = 10 * 1024 * 1024  # 10MB
-
 
 # Logging Configuration
 LOGGING = {
@@ -390,7 +365,6 @@ LOGGING = {
 # Create logs directory if it doesn't exist
 os.makedirs(BASE_DIR / 'logs', exist_ok=True)
 
-
 # Security Settings
 SECURE_BROWSER_XSS_FILTER = True
 SECURE_CONTENT_TYPE_NOSNIFF = True
@@ -407,7 +381,50 @@ CSRF_COOKIE_SECURE = not DEBUG
 CSRF_COOKIE_HTTPONLY = True
 CSRF_COOKIE_SAMESITE = 'Lax'
 
-
 # MSG91 SMS Gateway Configuration
 MSG91_AUTHKEY = os.environ.get('MSG91_AUTHKEY', '416664AgVFnjJ8nhio65d6fc7bP1')
 MSG91_TEMPLATE_ID = os.environ.get('MSG91_TEMPLATE_ID', '65e07756d6fc0556a35f7052')
+
+# === DigitalOcean Spaces / S3-Compatible Storage Configuration ===
+ALWAYS_UPLOAD_FILES_TO_AWS = True  # Set to True to always upload to AWS/DigitalOcean
+
+# This means you are uploading to AWS even when running locally
+if ALWAYS_UPLOAD_FILES_TO_AWS:    
+    AWS_ACCESS_KEY_ID = 'UCW66UXZOVY3QVYQLSEK'
+    AWS_SECRET_ACCESS_KEY = 'TJi4SulSCtEU5RlHWsKkOpFoL0Qo/qVf5JB6Dcg8rWk'
+    AWS_STORAGE_BUCKET_NAME = 'edrspace'
+    AWS_S3_ENDPOINT_URL = 'https://sgp1.digitaloceanspaces.com'
+    AWS_S3_OBJECT_PARAMETERS = {
+        'CacheControl': 'max-age=86400',
+    }
+    AWS_LOCATION = 'edrcontainer1'
+    AWS_DEFAULT_ACL = 'public-read'
+    AWS_S3_REGION_NAME = 'sgp1'
+    AWS_S3_FILE_OVERWRITE = False
+    AWS_QUERYSTRING_AUTH = False
+    AWS_S3_VERIFY = False
+    AWS_S3_ADDRESSING_STYLE = 'virtual'
+    AWS_S3_SIGNATURE_VERSION = 's3v4'
+    
+    # Media files configuration - pointing to DigitalOcean Space
+    MEDIA_URL = f'https://{AWS_STORAGE_BUCKET_NAME}.sgp1.digitaloceanspaces.com/{AWS_LOCATION}/'
+    MEDIA_ROOT = ''
+    
+    # Static files configuration - pointing to DigitalOcean Space
+    STATIC_URL = f'https://{AWS_STORAGE_BUCKET_NAME}.sgp1.digitaloceanspaces.com/{AWS_LOCATION}/static/'
+    STATICFILES_STORAGE = 'myproject.storage.StaticStorage'
+    DEFAULT_FILE_STORAGE = 'myproject.storage.MediaStorage'
+else:
+    # Local file storage (development)
+    FRONTEND_BUILD_DIR = BASE_DIR / 'build' / 'out'
+    
+    STATIC_URL = '/static/'
+    STATICFILES_DIRS = [
+        FRONTEND_BUILD_DIR / '_next',
+        FRONTEND_BUILD_DIR / 'static',
+        FRONTEND_BUILD_DIR,
+        BASE_DIR / 'media',
+    ]
+    STATIC_ROOT = BASE_DIR / 'staticfiles'
+    MEDIA_URL = '/media/'
+    MEDIA_ROOT = BASE_DIR / 'media_cdn'

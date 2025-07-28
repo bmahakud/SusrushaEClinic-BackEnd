@@ -540,7 +540,7 @@ class SuperAdminDoctorManagementView(APIView):
     
     @extend_schema(
         parameters=[
-            OpenApiParameter('is_active', OpenApiTypes.BOOL, description='Filter by active status'),
+            OpenApiParameter('is_active', OpenApiTypes.BOOL, description='Filter by active status (only True works since we use hard delete)'),
             OpenApiParameter('is_verified', OpenApiTypes.BOOL, description='Filter by verification status'),
             OpenApiParameter('specialization', OpenApiTypes.STR, description='Filter by specialization'),
             OpenApiParameter('search', OpenApiTypes.STR, description='Search by name or license number'),
@@ -555,6 +555,7 @@ class SuperAdminDoctorManagementView(APIView):
         # Apply filters
         is_active = request.query_params.get('is_active')
         if is_active is not None:
+            # Note: Since we use hard delete, is_active=False will show no results
             queryset = queryset.filter(is_active=is_active.lower() == 'true')
         
         is_verified = request.query_params.get('is_verified')
@@ -594,6 +595,7 @@ class SuperAdminDoctorManagementView(APIView):
             'phone': OpenApiTypes.STR,
             'name': OpenApiTypes.STR,
             'email': OpenApiTypes.STR,
+            'profile_picture': OpenApiTypes.BINARY,
             'license_number': OpenApiTypes.STR,
             'qualification': OpenApiTypes.STR,
             'specialization': OpenApiTypes.STR,
@@ -662,9 +664,33 @@ class SuperAdminDoctorManagementView(APIView):
                 'is_verified': True,  # SuperAdmin-created doctors are pre-verified
             }
             
+            # Handle profile picture if provided
+            if 'profile_picture' in request.FILES:
+                user_data['profile_picture'] = request.FILES['profile_picture']
+            
             user = User.objects.create_user(**user_data)
             user.set_password(password)
             user.save()
+            
+            # Helper function to convert string boolean to actual boolean
+            def parse_boolean(value):
+                if isinstance(value, bool):
+                    return value
+                if isinstance(value, str):
+                    return value.lower() in ['true', '1', 'yes', 'on']
+                return bool(value)
+            
+            # Helper function to parse JSON strings
+            def parse_json_field(value):
+                if isinstance(value, (list, dict)):
+                    return value
+                if isinstance(value, str):
+                    try:
+                        import json
+                        return json.loads(value)
+                    except (json.JSONDecodeError, ValueError):
+                        return []
+                return []
             
             # Create doctor profile
             profile_data = {
@@ -679,11 +705,11 @@ class SuperAdminDoctorManagementView(APIView):
                 'clinic_name': request.data.get('clinic_name', ''),
                 'clinic_address': request.data.get('clinic_address', ''),
                 'bio': request.data.get('bio', ''),
-                'languages_spoken': request.data.get('languages_spoken', []),
+                'languages_spoken': parse_json_field(request.data.get('languages_spoken', [])),
                 'consultation_duration': request.data.get('consultation_duration', 30),
-                'is_online_consultation_available': request.data.get('is_online_consultation_available', True),
+                'is_online_consultation_available': parse_boolean(request.data.get('is_online_consultation_available', True)),
                 'is_verified': True,  # SuperAdmin-created profiles are pre-verified
-                'is_active': request.data.get('is_active', True),
+                'is_active': parse_boolean(request.data.get('is_active', True)),
                 'is_accepting_patients': True,
             }
             
@@ -814,31 +840,26 @@ class SuperAdminDoctorDetailView(APIView):
     
     @extend_schema(
         responses={200: dict},
-        description="Delete/deactivate doctor (SuperAdmin only)"
+        description="Delete doctor (SuperAdmin only)"
     )
     def delete(self, request, doctor_id):
-        """Delete/deactivate doctor"""
+        """Delete doctor"""
         try:
             doctor = DoctorProfile.objects.get(id=doctor_id)
             user = doctor.user
             
-            # Deactivate doctor profile
-            doctor.is_active = False
-            doctor.is_accepting_patients = False
-            doctor.save()
-            
-            # Deactivate user account
-            user.is_active = False
-            user.save()
+            # Hard delete - permanently remove the doctor profile and user account
+            doctor.delete()
+            user.delete()
             
             return Response({
                 'success': True,
                 'data': {
                     'doctor_id': doctor_id,
                     'user_id': user.id,
-                    'status': 'deactivated'
+                    'status': 'deleted'
                 },
-                'message': 'Doctor deactivated successfully',
+                'message': 'Doctor deleted successfully',
                 'timestamp': timezone.now().isoformat()
             }, status=status.HTTP_200_OK)
             

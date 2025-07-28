@@ -6,11 +6,13 @@ from .models import (
     Clinic, ClinicService, ClinicInventory,
     ClinicAppointment, ClinicReview, ClinicDocument
 )
+from utils.signed_urls import get_signed_media_url
 
 
 class ClinicSerializer(serializers.ModelSerializer):
     admin = serializers.PrimaryKeyRelatedField(queryset=User.objects.filter(role='admin'), required=True)
     admin_name = serializers.CharField(source='admin.name', read_only=True)
+    cover_image = serializers.SerializerMethodField()
 
     class Meta:
         model = Clinic
@@ -21,7 +23,7 @@ class ClinicSerializer(serializers.ModelSerializer):
             'latitude', 'longitude', 'operating_hours',
             'specialties', 'services', 'facilities',
             'registration_number', 'license_number', 'accreditation',
-            'logo', 'cover_image', 'gallery_images',
+            'cover_image', 'gallery_images',
             'is_active', 'is_verified', 'accepts_online_consultations',
             'admin', 'admin_name', 'created_at', 'updated_at'
         ]
@@ -39,6 +41,12 @@ class ClinicSerializer(serializers.ModelSerializer):
         if Clinic.objects.filter(admin=value).exclude(id=clinic_id).exists():
             raise serializers.ValidationError('This admin is already assigned to another clinic.')
         return value
+    
+    def get_cover_image(self, obj):
+        """Generate signed URL for cover image"""
+        if obj.cover_image:
+            return get_signed_media_url(str(obj.cover_image))
+        return None
 
 class ClinicCreateSerializer(serializers.ModelSerializer):
     admin = serializers.PrimaryKeyRelatedField(queryset=User.objects.filter(role='admin'), required=True)
@@ -52,10 +60,24 @@ class ClinicCreateSerializer(serializers.ModelSerializer):
             'latitude', 'longitude', 'operating_hours',
             'specialties', 'services', 'facilities',
             'registration_number', 'license_number', 'accreditation',
-            'logo', 'cover_image', 'gallery_images',
+            'cover_image', 'gallery_images',
             'is_active', 'accepts_online_consultations',
             'admin',
         ]
+
+    def to_internal_value(self, data):
+        """Convert string boolean values to actual booleans"""
+        # Handle FormData boolean conversion
+        if hasattr(data, '_mutable') and not data._mutable:
+            # Make a mutable copy if it's an immutable QueryDict
+            data = data.copy()
+        
+        if isinstance(data, dict):
+            for key in ['is_active', 'accepts_online_consultations']:
+                if key in data and isinstance(data[key], str):
+                    data[key] = data[key].lower() in ['true', '1', 'yes', 'on']
+        
+        return super().to_internal_value(data)
 
     def create(self, validated_data):
         validated_data['is_verified'] = True
@@ -63,7 +85,14 @@ class ClinicCreateSerializer(serializers.ModelSerializer):
 
     def validate_admin(self, value):
         # Check if this admin is already assigned to a clinic
-        if Clinic.objects.filter(admin=value).exists():
+        # For updates, exclude the current clinic from the check
+        queryset = Clinic.objects.filter(admin=value)
+        
+        # If this is an update operation, exclude the current instance
+        if self.instance:
+            queryset = queryset.exclude(pk=self.instance.pk)
+        
+        if queryset.exists():
             raise serializers.ValidationError("This admin is already assigned to another clinic.")
         return value
 

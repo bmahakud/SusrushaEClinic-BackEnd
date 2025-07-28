@@ -24,6 +24,9 @@ factory-boy==3.3.1
 twilio==9.3.7
 boto3==1.35.91
 
+# DigitalOcean Spaces / S3 Storage
+django-storages==1.14.6
+
 # Payment gateways
 stripe==12.2.0
 razorpay==1.4.2

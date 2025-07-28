@@ -35,33 +35,64 @@ class SendOTPSerializer(serializers.Serializer):
         phone = validated_data['phone']
         purpose = validated_data['purpose']
 
-        # Generate 6-digit OTP
-        otp_code = ''.join(random.choices(string.digits, k=6))
-        # Hash the OTP
-        otp_hash = hashlib.sha256(otp_code.encode('utf-8')).hexdigest()
+        # Check if test mode is enabled
+        test_mode = getattr(settings, 'OTP_TEST_MODE', False)
+        test_otp = getattr(settings, 'OTP_TEST_CODE', '999999')
 
-        # Set expiry time (5 minutes from now)
-        expires_at = timezone.now() + timedelta(minutes=5)
+        if test_mode:
+            # In test mode, use the test OTP
+            otp_code = test_otp
+            # Hash the test OTP
+            otp_hash = hashlib.sha256(otp_code.encode('utf-8')).hexdigest()
+            
+            # Set expiry time (5 minutes from now)
+            expires_at = timezone.now() + timedelta(minutes=5)
 
-        # Invalidate previous OTPs for this phone
-        OTP.objects.filter(phone=phone, purpose=purpose, is_used=False).update(is_used=True)
+            # Invalidate previous OTPs for this phone
+            OTP.objects.filter(phone=phone, purpose=purpose, is_used=False).update(is_used=True)
 
-        # Create new OTP (store hash)
-        otp = OTP.objects.create(
-            phone=phone,
-            otp=otp_hash,
-            purpose=purpose,
-            expires_at=expires_at
-        )
+            # Create new OTP (store hash)
+            otp = OTP.objects.create(
+                phone=phone,
+                otp=otp_hash,
+                purpose=purpose,
+                expires_at=expires_at
+            )
 
-        # Send OTP via SMS (production)
-        send_otp_sms(phone, otp_code, purpose)
+            return {
+                'phone': phone,
+                'expires_in': 300,
+                'message': f'Test OTP sent successfully. Use {test_otp} for verification.',
+                'test_otp': test_otp  # Include test OTP in response for convenience
+            }
+        else:
+            # Production mode - generate random OTP
+            otp_code = ''.join(random.choices(string.digits, k=6))
+            # Hash the OTP
+            otp_hash = hashlib.sha256(otp_code.encode('utf-8')).hexdigest()
 
-        return {
-            'phone': phone,
-            'expires_in': 300,
-            'message': 'OTP sent successfully'
-        }
+            # Set expiry time (5 minutes from now)
+            expires_at = timezone.now() + timedelta(minutes=5)
+
+            # Invalidate previous OTPs for this phone
+            OTP.objects.filter(phone=phone, purpose=purpose, is_used=False).update(is_used=True)
+
+            # Create new OTP (store hash)
+            otp = OTP.objects.create(
+                phone=phone,
+                otp=otp_hash,
+                purpose=purpose,
+                expires_at=expires_at
+            )
+
+            # Send OTP via SMS (production)
+            send_otp_sms(phone, otp_code, purpose)
+
+            return {
+                'phone': phone,
+                'expires_in': 300,
+                'message': 'OTP sent successfully'
+            }
 
 
 class VerifyOTPSerializer(serializers.Serializer):
@@ -89,18 +120,22 @@ class VerifyOTPSerializer(serializers.Serializer):
         phone = attrs['phone']
         otp_code = attrs['otp']
 
-        # Remove test OTP bypass in production
-        # if getattr(settings, 'DEBUG', False) and otp_code == '999999':
-        #     user, created = User.objects.get_or_create(
-        #         phone=phone,
-        #         defaults={
-        #             'name': f'User {phone[-4:]}',
-        #             'role': 'patient'
-        #         }
-        #     )
-        #     attrs['user'] = user
-        #     attrs['is_new_user'] = created
-        #     return attrs
+        # Check if test mode is enabled
+        test_mode = getattr(settings, 'OTP_TEST_MODE', False)
+        test_otp = getattr(settings, 'OTP_TEST_CODE', '999999')
+
+        # Handle test OTP bypass
+        if test_mode and otp_code == test_otp:
+            user, created = User.objects.get_or_create(
+                phone=phone,
+                defaults={
+                    'name': f'User {phone[-4:]}',
+                    'role': 'patient'
+                }
+            )
+            attrs['user'] = user
+            attrs['is_new_user'] = created
+            return attrs
 
         # Hash the provided OTP
         otp_hash = hashlib.sha256(otp_code.encode('utf-8')).hexdigest()

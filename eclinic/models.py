@@ -48,7 +48,6 @@ class Clinic(models.Model):
     accreditation = models.CharField(max_length=200, blank=True)
 
     # Images and Media
-    logo = models.ImageField(upload_to='clinic_logos/', blank=True, null=True)
     cover_image = models.ImageField(upload_to='clinic_covers/', blank=True, null=True)
     gallery_images = models.JSONField(default=list, help_text="List of gallery image URLs")
 
