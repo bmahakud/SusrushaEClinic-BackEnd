@@ -427,4 +427,8 @@ else:
     ]
     STATIC_ROOT = BASE_DIR / 'staticfiles'
     MEDIA_URL = '/media/'
-    MEDIA_ROOT = BASE_DIR / 'media_cdn'
+# OTP Configuration
+OTP_TEST_MODE = True
+OTP_TEST_CODE = '999999'
+
+MEDIA_ROOT = BASE_DIR / 'media_cdn'
