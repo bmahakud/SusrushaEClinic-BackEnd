@@ -258,7 +258,16 @@ class DoctorSlotSerializer(serializers.ModelSerializer):
         return data
 
     def validate(self, data):
-        doctor = data['doctor']
+        # Get doctor from context since it's read-only in the serializer
+        doctor_id = self.context['view'].kwargs.get('doctor_id')
+        if not doctor_id:
+            raise serializers.ValidationError("Doctor ID is required")
+        
+        try:
+            doctor = User.objects.get(id=doctor_id)
+        except User.DoesNotExist:
+            raise serializers.ValidationError("Doctor not found")
+        
         date = data['date']
         start_time = data['start_time']
         end_time = data['end_time']
