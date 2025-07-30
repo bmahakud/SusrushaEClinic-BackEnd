@@ -30,8 +30,8 @@ class DoctorProfileSerializer(serializers.ModelSerializer):
             'is_verified', 'consultation_duration',
             'is_online_consultation_available', 'is_active',
             'rating', 'total_reviews', 'clinic_name', 'clinic_address',
-            'is_accepting_patients', 'created_at', 'updated_at',
-            'meeting_link'
+            'is_accepting_patients', 'date_of_birth', 'date_of_anniversary',
+            'created_at', 'updated_at', 'meeting_link'
         ]
         read_only_fields = ['id', 'user', 'is_verified', 'rating', 'total_reviews', 'created_at', 'updated_at']
 
@@ -54,7 +54,8 @@ class DoctorProfileCreateSerializer(serializers.ModelSerializer):
             'license_number', 'qualification', 'specialization', 'sub_specialization',
             'consultation_fee', 'online_consultation_fee', 'languages_spoken',
             'bio', 'achievements', 'consultation_duration',
-            'is_online_consultation_available', 'clinic_name', 'clinic_address'
+            'is_online_consultation_available', 'clinic_name', 'clinic_address',
+            'date_of_birth', 'date_of_anniversary'
         ]
     
     def create(self, validated_data):
@@ -151,7 +152,8 @@ class DoctorListSerializer(serializers.ModelSerializer):
             'is_verified', 'consultation_duration',
             'is_online_consultation_available', 'is_active',
             'rating', 'total_reviews', 'clinic_name', 'clinic_address',
-            'is_accepting_patients', 'created_at', 'updated_at'
+            'is_accepting_patients', 'date_of_birth', 'date_of_anniversary',
+            'created_at', 'updated_at'
         ]
     
     def get_profile_picture(self, obj):

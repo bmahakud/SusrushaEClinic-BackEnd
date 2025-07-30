@@ -12,6 +12,7 @@ urlpatterns = [
     # Clinic search and statistics
     path('search/', views.ClinicSearchView.as_view(), name='clinic-search'),
     path('stats/', views.ClinicStatsView.as_view(), name='clinic-stats'),
+    path('analytics/', views.ClinicAnalyticsView.as_view(), name='clinic-analytics'),
     path('nearby/', views.NearbyClinicView.as_view(), name='nearby-clinics'),
     
     # Clinic-specific nested resources (doctors endpoints removed)

@@ -16,6 +16,14 @@ urlpatterns = [
     path('real-time/', views.RealTimeMetricsView.as_view(), name='real-time-metrics'),
     path('superadmin/overview/', views.SuperAdminOverviewStatsView.as_view(), name='superadmin-overview-stats'),
     
+    # SuperAdmin comprehensive analytics
+    path('superadmin/comprehensive/', views.SuperAdminComprehensiveAnalyticsView.as_view(), name='superadmin-comprehensive-analytics'),
+    path('superadmin/revenue/', views.SuperAdminRevenueAnalyticsView.as_view(), name='superadmin-revenue-analytics'),
+    path('superadmin/consultations/', views.SuperAdminConsultationAnalyticsView.as_view(), name='superadmin-consultation-analytics'),
+    path('superadmin/patients/', views.SuperAdminPatientAnalyticsView.as_view(), name='superadmin-patient-analytics'),
+    path('superadmin/clinics/', views.SuperAdminClinicAnalyticsView.as_view(), name='superadmin-clinic-analytics'),
+    path('superadmin/doctors/', views.SuperAdminDoctorAnalyticsView.as_view(), name='superadmin-doctor-analytics'),
+    
     # Specific analytics
     path('user-growth/', views.UserGrowthAnalyticsView.as_view(), name='user-growth'),
     path('consultations/', views.ConsultationAnalyticsView.as_view(), name='consultation-analytics'),

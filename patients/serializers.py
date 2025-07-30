@@ -48,16 +48,17 @@ class PatientProfileCreateSerializer(serializers.ModelSerializer):
 class MedicalRecordSerializer(serializers.ModelSerializer):
     """Serializer for medical records"""
     recorded_by_name = serializers.CharField(source='recorded_by.name', read_only=True)
+    patient_name = serializers.CharField(source='patient.name', read_only=True)
     
     class Meta:
         model = MedicalRecord
         fields = [
-            'id', 'patient', 'record_type',
+            'id', 'patient', 'patient_name', 'record_type',
             'title', 'description', 'date_recorded', 'document',
             'recorded_by', 'recorded_by_name', 'is_active',
             'created_at', 'updated_at'
         ]
-        read_only_fields = ['id', 'created_at', 'updated_at']
+        read_only_fields = ['id', 'patient', 'recorded_by', 'created_at', 'updated_at']
 
 
 class MedicalRecordCreateSerializer(serializers.ModelSerializer):
@@ -81,22 +82,18 @@ class MedicalRecordCreateSerializer(serializers.ModelSerializer):
 
 class PatientDocumentSerializer(serializers.ModelSerializer):
     """Serializer for patient documents"""
+    verified_by_name = serializers.CharField(source='verified_by.name', read_only=True)
+    patient_name = serializers.CharField(source='patient.name', read_only=True)
     
     class Meta:
         model = PatientDocument
         fields = [
-            'id', 'patient', 'document_type', 'title', 'description',
+            'id', 'patient', 'patient_name', 'document_type', 'title', 'description',
             'file',
-            'is_verified', 'verified_by', 'verified_at',
+            'is_verified', 'verified_by', 'verified_by_name', 'verified_at',
             'uploaded_at', 'updated_at'
         ]
-        read_only_fields = ['id', 'uploaded_at', 'updated_at']
-    
-    def get_file_size_mb(self, obj):
-        """Get file size in MB"""
-        if obj.file_size:
-            return round(obj.file_size / (1024 * 1024), 2)
-        return 0
+        read_only_fields = ['id', 'patient', 'verified_by', 'verified_at', 'uploaded_at', 'updated_at']
 
 
 class PatientDocumentUploadSerializer(serializers.ModelSerializer):
@@ -111,14 +108,8 @@ class PatientDocumentUploadSerializer(serializers.ModelSerializer):
     def create(self, validated_data):
         """Create patient document"""
         patient_id = self.context['view'].kwargs.get('patient_id')
-        uploaded_by = self.context['request'].user
         
         validated_data['patient_id'] = patient_id
-        validated_data['uploaded_by'] = uploaded_by
-        
-        # Set file size
-        if 'file' in validated_data and validated_data['file']:
-            validated_data['file_size'] = validated_data['file'].size
         
         return super().create(validated_data)
 

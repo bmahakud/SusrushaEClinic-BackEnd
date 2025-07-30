@@ -71,6 +71,10 @@ class DoctorProfile(models.Model):
     is_active = models.BooleanField(default=True)
     is_accepting_patients = models.BooleanField(default=True)
     
+    # Personal Information
+    date_of_birth = models.DateField(null=True, blank=True)
+    date_of_anniversary = models.DateField(null=True, blank=True)
+    
     # Metadata
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)

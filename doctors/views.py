@@ -98,6 +98,38 @@ class DoctorProfileViewSet(ModelViewSet):
         responses={200: DoctorListSerializer(many=True)},
         description="List all doctors with pagination and filtering"
     )
+    
+    @action(detail=False, methods=['get'])
+    def me(self, request):
+        """Get current doctor's profile"""
+        if request.user.role != 'doctor':
+            return Response({
+                'success': False,
+                'error': {
+                    'code': 'PERMISSION_DENIED',
+                    'message': 'Only doctors can access their own profile'
+                },
+                'timestamp': timezone.now().isoformat()
+            }, status=status.HTTP_403_FORBIDDEN)
+        
+        try:
+            doctor_profile = DoctorProfile.objects.get(user=request.user)
+            serializer = DoctorProfileSerializer(doctor_profile)
+            return Response({
+                'success': True,
+                'data': serializer.data,
+                'message': 'Doctor profile retrieved successfully',
+                'timestamp': timezone.now().isoformat()
+            }, status=status.HTTP_200_OK)
+        except DoctorProfile.DoesNotExist:
+            return Response({
+                'success': False,
+                'error': {
+                    'code': 'PROFILE_NOT_FOUND',
+                    'message': 'Doctor profile not found'
+                },
+                'timestamp': timezone.now().isoformat()
+            }, status=status.HTTP_404_NOT_FOUND)
     def list(self, request):
         """List doctors with pagination and filtering"""
         queryset = self.filter_queryset(self.get_queryset())
@@ -610,6 +642,8 @@ class SuperAdminDoctorManagementView(APIView):
             'consultation_duration': OpenApiTypes.INT,
             'is_online_consultation_available': OpenApiTypes.BOOL,
             'is_active': OpenApiTypes.BOOL,
+            'date_of_birth': OpenApiTypes.STR,
+            'date_of_anniversary': OpenApiTypes.STR,
         },
         responses={201: DoctorProfileSerializer},
         description="Create new doctor account and profile (SuperAdmin only)"
@@ -711,6 +745,8 @@ class SuperAdminDoctorManagementView(APIView):
                 'is_verified': True,  # SuperAdmin-created profiles are pre-verified
                 'is_active': parse_boolean(request.data.get('is_active', True)),
                 'is_accepting_patients': True,
+                'date_of_birth': request.data.get('date_of_birth'),
+                'date_of_anniversary': request.data.get('date_of_anniversary'),
             }
             
             doctor_profile = DoctorProfile.objects.create(**profile_data)

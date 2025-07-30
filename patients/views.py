@@ -165,6 +165,36 @@ class PatientProfileViewSet(ModelViewSet):
             'timestamp': timezone.now().isoformat()
         }, status=status.HTTP_400_BAD_REQUEST)
 
+    @extend_schema(
+        responses={200: dict, 404: dict},
+        description="Delete patient profile"
+    )
+    def destroy(self, request, pk=None):
+        """Delete patient profile"""
+        try:
+            patient = self.get_object()
+            patient.delete()
+            return Response({
+                'success': True,
+                'data': {
+                    'patient_id': str(patient.id),
+                    'user_id': str(patient.user.id),
+                    'status': 'deleted'
+                },
+                'message': 'Patient profile deleted successfully',
+                'timestamp': timezone.now().isoformat()
+            }, status=status.HTTP_200_OK)
+            
+        except Exception as e:
+            return Response({
+                'success': False,
+                'error': {
+                    'code': 'DELETE_ERROR',
+                    'message': str(e)
+                },
+                'timestamp': timezone.now().isoformat()
+            }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+
 
 class PatientMedicalRecordViewSet(ModelViewSet):
     """ViewSet for patient medical records"""
@@ -172,14 +202,14 @@ class PatientMedicalRecordViewSet(ModelViewSet):
     permission_classes = [permissions.IsAuthenticated]
     pagination_class = PatientPagination
     filter_backends = [filters.SearchFilter, filters.OrderingFilter]
-    search_fields = ['title', 'diagnosis', 'description']
-    ordering_fields = ['visit_date', 'created_at']
-    ordering = ['-visit_date']
+    search_fields = ['title', 'description']
+    ordering_fields = ['date_recorded', 'created_at']
+    ordering = ['-date_recorded']
     
     def get_queryset(self):
         """Get medical records for specific patient"""
         patient_id = self.kwargs.get('patient_id')
-        return MedicalRecord.objects.filter(patient_id=patient_id).select_related('doctor')
+        return MedicalRecord.objects.filter(patient_id=patient_id).select_related('recorded_by')
     
     def get_serializer_class(self):
         """Return appropriate serializer based on action"""
@@ -193,15 +223,30 @@ class PatientMedicalRecordViewSet(ModelViewSet):
     )
     def list(self, request, patient_id=None):
         """List medical records for a patient"""
-        queryset = self.filter_queryset(self.get_queryset())
-        page = self.paginate_queryset(queryset)
-        
-        if page is not None:
-            serializer = self.get_serializer(page, many=True)
-            return self.get_paginated_response(serializer.data)
-        
-        serializer = self.get_serializer(queryset, many=True)
-        return Response(serializer.data, status=status.HTTP_200_OK)
+        try:
+            queryset = self.filter_queryset(self.get_queryset())
+            page = self.paginate_queryset(queryset)
+            
+            if page is not None:
+                serializer = self.get_serializer(page, many=True)
+                return self.get_paginated_response(serializer.data)
+            
+            serializer = self.get_serializer(queryset, many=True)
+            return Response({
+                'success': True,
+                'data': serializer.data,
+                'message': 'Medical records retrieved successfully',
+                'timestamp': timezone.now().isoformat()
+            }, status=status.HTTP_200_OK)
+        except Exception as e:
+            return Response({
+                'success': False,
+                'error': {
+                    'code': 'LIST_ERROR',
+                    'message': str(e)
+                },
+                'timestamp': timezone.now().isoformat()
+            }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
     
     @extend_schema(
         request=MedicalRecordCreateSerializer,
@@ -231,6 +276,35 @@ class PatientMedicalRecordViewSet(ModelViewSet):
             'timestamp': timezone.now().isoformat()
         }, status=status.HTTP_400_BAD_REQUEST)
 
+    @extend_schema(
+        responses={200: dict, 404: dict},
+        description="Delete medical record"
+    )
+    def destroy(self, request, pk=None, patient_id=None):
+        """Delete medical record"""
+        try:
+            medical_record = self.get_object()
+            medical_record.delete()
+            return Response({
+                'success': True,
+                'data': {
+                    'medical_record_id': str(medical_record.id),
+                    'status': 'deleted'
+                },
+                'message': 'Medical record deleted successfully',
+                'timestamp': timezone.now().isoformat()
+            }, status=status.HTTP_200_OK)
+            
+        except Exception as e:
+            return Response({
+                'success': False,
+                'error': {
+                    'code': 'DELETE_ERROR',
+                    'message': str(e)
+                },
+                'timestamp': timezone.now().isoformat()
+            }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+
 
 class PatientDocumentViewSet(ModelViewSet):
     """ViewSet for patient documents"""
@@ -239,13 +313,13 @@ class PatientDocumentViewSet(ModelViewSet):
     pagination_class = PatientPagination
     filter_backends = [filters.SearchFilter, filters.OrderingFilter]
     search_fields = ['title', 'description', 'document_type']
-    ordering_fields = ['created_at', 'document_type']
-    ordering = ['-created_at']
+    ordering_fields = ['uploaded_at', 'document_type']
+    ordering = ['-uploaded_at']
     
     def get_queryset(self):
         """Get documents for specific patient"""
         patient_id = self.kwargs.get('patient_id')
-        return PatientDocument.objects.filter(patient_id=patient_id).select_related('uploaded_by')
+        return PatientDocument.objects.filter(patient_id=patient_id).select_related('verified_by')
     
     def get_serializer_class(self):
         """Return appropriate serializer based on action"""
@@ -307,6 +381,35 @@ class PatientDocumentViewSet(ModelViewSet):
             'timestamp': timezone.now().isoformat()
         }, status=status.HTTP_400_BAD_REQUEST)
 
+    @extend_schema(
+        responses={200: dict, 404: dict},
+        description="Delete patient document"
+    )
+    def destroy(self, request, pk=None, patient_id=None):
+        """Delete patient document"""
+        try:
+            document = self.get_object()
+            document.delete()
+            return Response({
+                'success': True,
+                'data': {
+                    'document_id': str(document.id),
+                    'status': 'deleted'
+                },
+                'message': 'Patient document deleted successfully',
+                'timestamp': timezone.now().isoformat()
+            }, status=status.HTTP_200_OK)
+            
+        except Exception as e:
+            return Response({
+                'success': False,
+                'error': {
+                    'code': 'DELETE_ERROR',
+                    'message': str(e)
+                },
+                'timestamp': timezone.now().isoformat()
+            }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+
 
 class PatientNoteViewSet(ModelViewSet):
     """ViewSet for patient notes"""
@@ -314,8 +417,8 @@ class PatientNoteViewSet(ModelViewSet):
     permission_classes = [permissions.IsAuthenticated]
     pagination_class = PatientPagination
     filter_backends = [filters.SearchFilter, filters.OrderingFilter]
-    search_fields = ['title', 'content']
-    ordering_fields = ['created_at', 'note_type']
+    search_fields = ['note']
+    ordering_fields = ['created_at']
     ordering = ['-created_at']
     
     def get_queryset(self):
@@ -339,6 +442,94 @@ class PatientNoteViewSet(ModelViewSet):
         if self.action == 'create':
             return PatientNoteCreateSerializer
         return PatientNoteSerializer
+
+    @extend_schema(
+        responses={200: PatientNoteSerializer(many=True)},
+        description="List notes for a patient"
+    )
+    def list(self, request, patient_id=None):
+        """List notes for a patient"""
+        try:
+            queryset = self.filter_queryset(self.get_queryset())
+            page = self.paginate_queryset(queryset)
+            
+            if page is not None:
+                serializer = self.get_serializer(page, many=True)
+                return self.get_paginated_response(serializer.data)
+            
+            serializer = self.get_serializer(queryset, many=True)
+            return Response({
+                'success': True,
+                'data': serializer.data,
+                'message': 'Patient notes retrieved successfully',
+                'timestamp': timezone.now().isoformat()
+            }, status=status.HTTP_200_OK)
+        except Exception as e:
+            return Response({
+                'success': False,
+                'error': {
+                    'code': 'LIST_ERROR',
+                    'message': str(e)
+                },
+                'timestamp': timezone.now().isoformat()
+            }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+
+    @extend_schema(
+        request=PatientNoteCreateSerializer,
+        responses={201: PatientNoteSerializer},
+        description="Create note for a patient"
+    )
+    def create(self, request, patient_id=None):
+        """Create note for a patient"""
+        serializer = self.get_serializer(data=request.data)
+        if serializer.is_valid():
+            note = serializer.save()
+            response_serializer = PatientNoteSerializer(note)
+            return Response({
+                'success': True,
+                'data': response_serializer.data,
+                'message': 'Patient note created successfully',
+                'timestamp': timezone.now().isoformat()
+            }, status=status.HTTP_201_CREATED)
+        
+        return Response({
+            'success': False,
+            'error': {
+                'code': 'VALIDATION_ERROR',
+                'message': 'Invalid data provided',
+                'details': serializer.errors
+            },
+            'timestamp': timezone.now().isoformat()
+        }, status=status.HTTP_400_BAD_REQUEST)
+
+    @extend_schema(
+        responses={200: dict, 404: dict},
+        description="Delete patient note"
+    )
+    def destroy(self, request, pk=None, patient_id=None):
+        """Delete patient note"""
+        try:
+            note = self.get_object()
+            note.delete()
+            return Response({
+                'success': True,
+                'data': {
+                    'note_id': str(note.id),
+                    'status': 'deleted'
+                },
+                'message': 'Patient note deleted successfully',
+                'timestamp': timezone.now().isoformat()
+            }, status=status.HTTP_200_OK)
+            
+        except Exception as e:
+            return Response({
+                'success': False,
+                'error': {
+                    'code': 'DELETE_ERROR',
+                    'message': str(e)
+                },
+                'timestamp': timezone.now().isoformat()
+            }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
 
 
 class PatientSearchView(APIView):

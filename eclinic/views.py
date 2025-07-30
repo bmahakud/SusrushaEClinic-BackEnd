@@ -380,6 +380,168 @@ class ClinicStatsView(APIView):
         }, status=status.HTTP_200_OK)
 
 
+class ClinicAnalyticsView(APIView):
+    """Get comprehensive analytics for SuperAdmin dashboard"""
+    permission_classes = [permissions.IsAuthenticated]
+    
+    @extend_schema(
+        responses={200: dict},
+        description="Get comprehensive analytics for SuperAdmin dashboard"
+    )
+    def get(self, request):
+        """Get comprehensive analytics data"""
+        # Check permissions - only SuperAdmin can access
+        if request.user.role != 'superadmin':
+            return Response({
+                'success': False,
+                'error': {
+                    'code': 'PERMISSION_DENIED',
+                    'message': 'Only SuperAdmin can access clinic analytics'
+                },
+                'timestamp': timezone.now().isoformat()
+            }, status=status.HTTP_403_FORBIDDEN)
+        
+        try:
+            # Time periods
+            now = timezone.now()
+            last_7_days = now - timedelta(days=7)
+            last_30_days = now - timedelta(days=30)
+            last_90_days = now - timedelta(days=90)
+            
+            # Basic metrics
+            total_clinics = Clinic.objects.count()
+            active_clinics = Clinic.objects.filter(is_active=True).count()
+            verified_clinics = Clinic.objects.filter(is_verified=True).count()
+            online_clinics = Clinic.objects.filter(accepts_online_consultations=True).count()
+            
+            # Growth metrics
+            new_clinics_7d = Clinic.objects.filter(created_at__gte=last_7_days).count()
+            new_clinics_30d = Clinic.objects.filter(created_at__gte=last_30_days).count()
+            new_clinics_90d = Clinic.objects.filter(created_at__gte=last_90_days).count()
+            
+            # Geographic analytics
+            city_distribution = Clinic.objects.values('city').annotate(
+                count=Count('id')
+            ).order_by('-count')[:10] if Clinic.objects.exists() else []
+            
+            state_distribution = Clinic.objects.values('state').annotate(
+                count=Count('id')
+            ).order_by('-count')[:10] if Clinic.objects.exists() else []
+            
+            # Specialization analytics
+            all_specialties = []
+            if Clinic.objects.exists():
+                for clinic in Clinic.objects.all():
+                    if clinic.specialties:
+                        all_specialties.extend(clinic.specialties)
+            
+            specialty_counts = {}
+            for specialty in all_specialties:
+                specialty_counts[specialty] = specialty_counts.get(specialty, 0) + 1
+            
+            top_specialties = sorted(specialty_counts.items(), key=lambda x: x[1], reverse=True)[:10]
+            
+            # Monthly trends (last 12 months)
+            monthly_trends = []
+            for i in range(12):
+                month_start = now.replace(day=1) - timedelta(days=30*i)
+                month_end = month_start.replace(day=1) + timedelta(days=32)
+                month_end = month_end.replace(day=1) - timedelta(days=1)
+                
+                count = Clinic.objects.filter(
+                    created_at__gte=month_start,
+                    created_at__lte=month_end
+                ).count()
+                
+                monthly_trends.append({
+                    'month': month_start.strftime('%B %Y'),
+                    'count': count,
+                    'period': month_start.strftime('%Y-%m')
+                })
+            
+            monthly_trends.reverse()
+            
+            # Performance metrics
+            verification_rate = round((verified_clinics / total_clinics * 100) if total_clinics > 0 else 0, 1)
+            activation_rate = round((active_clinics / total_clinics * 100) if total_clinics > 0 else 0, 1)
+            online_rate = round((online_clinics / total_clinics * 100) if total_clinics > 0 else 0, 1)
+            
+            # Recent activity
+            recent_clinics = Clinic.objects.order_by('-created_at')[:5] if Clinic.objects.exists() else []
+            recent_activity = []
+            for clinic in recent_clinics:
+                recent_activity.append({
+                    'id': clinic.id,
+                    'name': clinic.name,
+                    'city': clinic.city,
+                    'state': clinic.state,
+                    'created_at': clinic.created_at.strftime('%Y-%m-%d'),
+                    'is_verified': clinic.is_verified,
+                    'is_active': clinic.is_active
+                })
+            
+            analytics = {
+                # Overview metrics
+                'overview': {
+                    'total_clinics': total_clinics,
+                    'active_clinics': active_clinics,
+                    'verified_clinics': verified_clinics,
+                    'online_clinics': online_clinics,
+                    'verification_rate': verification_rate,
+                    'activation_rate': activation_rate,
+                    'online_rate': online_rate
+                },
+                
+                # Growth metrics
+                'growth': {
+                    'new_clinics_7d': new_clinics_7d,
+                    'new_clinics_30d': new_clinics_30d,
+                    'new_clinics_90d': new_clinics_90d,
+                    'growth_rate_7d': round((new_clinics_7d / total_clinics * 100) if total_clinics > 0 else 0, 1),
+                    'growth_rate_30d': round((new_clinics_30d / total_clinics * 100) if total_clinics > 0 else 0, 1),
+                    'growth_rate_90d': round((new_clinics_90d / total_clinics * 100) if total_clinics > 0 else 0, 1)
+                },
+                
+                # Geographic data
+                'geographic': {
+                    'cities': [{'city': item['city'], 'count': item['count']} for item in city_distribution],
+                    'states': [{'state': item['state'], 'count': item['count']} for item in state_distribution]
+                },
+                
+                # Specialization data
+                'specializations': {
+                    'top_specialties': [{'specialty': item[0], 'count': item[1]} for item in top_specialties],
+                    'total_specialties': len(specialty_counts)
+                },
+                
+                # Trends
+                'trends': {
+                    'monthly_growth': monthly_trends,
+                    'last_updated': now.strftime('%Y-%m-%d %H:%M:%S')
+                },
+                
+                # Recent activity
+                'recent_activity': recent_activity
+            }
+            
+            return Response({
+                'success': True,
+                'data': analytics,
+                'message': 'Analytics data retrieved successfully',
+                'timestamp': timezone.now().isoformat()
+            }, status=status.HTTP_200_OK)
+            
+        except Exception as e:
+            return Response({
+                'success': False,
+                'error': {
+                    'code': 'ANALYTICS_ERROR',
+                    'message': f'Failed to fetch analytics: {str(e)}'
+                },
+                'timestamp': timezone.now().isoformat()
+            }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+
+
 class NearbyClinicView(APIView):
     """Find nearby clinics"""
     permission_classes = [permissions.IsAuthenticated]
