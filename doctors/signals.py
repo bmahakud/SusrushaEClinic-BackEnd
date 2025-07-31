@@ -5,7 +5,8 @@ Signals for automatic file upload to DigitalOcean Spaces
 from django.db.models.signals import post_save
 from django.dispatch import receiver
 from django.conf import settings
-from .models import DoctorProfile, DoctorDocument, DoctorEducation
+from django.utils import timezone
+from .models import DoctorProfile, DoctorDocument, DoctorEducation, DoctorStatus
 import threading
 import boto3
 import os
@@ -207,3 +208,31 @@ def upload_doctor_document_to_spaces(sender, instance, created, **kwargs):
                     
     except Exception as e:
         print(f"❌ Error in upload_doctor_document_to_spaces signal: {e}") 
+
+@receiver(post_save, sender=DoctorProfile)
+def create_doctor_status(sender, instance, created, **kwargs):
+    """Create DoctorStatus record when a new DoctorProfile is created"""
+    if created:
+        DoctorStatus.objects.create(
+            doctor=instance,
+            is_online=False,
+            is_logged_in=False,
+            is_available=True,
+            current_status='offline',
+            last_activity=timezone.now(),
+            status_updated_at=timezone.now(),
+            status_note='',
+            auto_away_threshold=15,
+        )
+
+@receiver(post_save, sender=DoctorStatus)
+def broadcast_status_update(sender, instance, **kwargs):
+    """Broadcast status update when DoctorStatus is updated"""
+    from .views import broadcast_doctor_status_update
+    from .serializers import DoctorStatusSerializer
+    
+    # Serialize the updated status
+    serializer = DoctorStatusSerializer(instance)
+    
+    # Broadcast the update
+    broadcast_doctor_status_update(serializer.data) 

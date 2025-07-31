@@ -12,11 +12,14 @@ from drf_spectacular.utils import extend_schema, OpenApiParameter
 from drf_spectacular.types import OpenApiTypes
 from datetime import datetime, timedelta
 from django.db import IntegrityError
+from channels.layers import get_channel_layer
+from asgiref.sync import async_to_sync
+import json
 
 from authentication.models import User
 from .models import (
     DoctorProfile, DoctorEducation, DoctorExperience, 
-    DoctorDocument, DoctorSchedule, DoctorReview, DoctorSlot
+    DoctorDocument, DoctorSchedule, DoctorReview, DoctorSlot, DoctorStatus
 )
 from .serializers import (
     DoctorProfileSerializer, DoctorProfileCreateSerializer,
@@ -24,7 +27,7 @@ from .serializers import (
     DoctorDocumentSerializer, DoctorScheduleSerializer,
     DoctorReviewSerializer, DoctorListSerializer, DoctorSearchSerializer,
     DoctorStatsSerializer, DoctorScheduleCreateSerializer, DoctorSlotSerializer,
-    DoctorSlotGenerationSerializer
+    DoctorSlotGenerationSerializer, DoctorStatusSerializer, DoctorStatusUpdateSerializer, DoctorStatusListSerializer
 )
 
 
@@ -1056,4 +1059,246 @@ class SuperAdminDoctorDetailView(APIView):
                 },
                 'timestamp': timezone.now().isoformat()
             }, status=status.HTTP_404_NOT_FOUND)
+
+
+class DoctorStatusListView(APIView):
+    """View for listing all doctor statuses (SuperAdmin only)"""
+    
+    permission_classes = [permissions.IsAuthenticated, IsAdminOrSuperAdmin]
+    
+    @extend_schema(
+        summary="Get all doctor statuses",
+        description="Retrieve real-time status of all doctors",
+        responses={200: DoctorStatusListSerializer(many=True)},
+        tags=["Doctor Status"]
+    )
+    def get(self, request):
+        try:
+            # Get all doctor statuses with doctor info
+            statuses = DoctorStatus.objects.select_related('doctor', 'doctor__user').all()
+            
+            # Apply filters if provided
+            status_filter = request.query_params.get('status')
+            if status_filter:
+                statuses = statuses.filter(current_status=status_filter)
+            
+            online_filter = request.query_params.get('online')
+            if online_filter is not None:
+                is_online = online_filter.lower() == 'true'
+                statuses = statuses.filter(is_online=is_online)
+            
+            available_filter = request.query_params.get('available')
+            if available_filter is not None:
+                is_available = available_filter.lower() == 'true'
+                statuses = statuses.filter(is_available=is_available)
+            
+            # Order by last activity (most recent first)
+            statuses = statuses.order_by('-last_activity')
+            
+            serializer = DoctorStatusListSerializer(statuses, many=True)
+            
+            return Response({
+                'status': 'success',
+                'message': 'Doctor statuses retrieved successfully',
+                'data': serializer.data,
+                'count': len(serializer.data),
+                'online_count': statuses.filter(is_online=True).count(),
+                'available_count': statuses.filter(is_available=True).count(),
+                'consulting_count': statuses.filter(current_status='consulting').count()
+            })
+            
+        except Exception as e:
+            return Response({
+                'status': 'error',
+                'message': f'Failed to retrieve doctor statuses: {str(e)}'
+            }, status=500)
+
+
+class DoctorStatusDetailView(APIView):
+    """View for individual doctor status details"""
+    
+    permission_classes = [permissions.IsAuthenticated, IsAdminOrSuperAdmin]
+    
+    @extend_schema(
+        summary="Get doctor status details",
+        description="Retrieve detailed status information for a specific doctor",
+        responses={200: DoctorStatusSerializer},
+        tags=["Doctor Status"]
+    )
+    def get(self, request, doctor_id):
+        try:
+            # Get doctor status
+            try:
+                status = DoctorStatus.objects.select_related(
+                    'doctor', 'doctor__user', 'current_consultation', 'current_consultation__patient'
+                ).get(doctor_id=doctor_id)
+            except DoctorStatus.DoesNotExist:
+                return Response({
+                    'status': 'error',
+                    'message': 'Doctor status not found'
+                }, status=404)
+            
+            serializer = DoctorStatusSerializer(status)
+            
+            return Response({
+                'status': 'success',
+                'message': 'Doctor status retrieved successfully',
+                'data': serializer.data
+            })
+            
+        except Exception as e:
+            return Response({
+                'status': 'error',
+                'message': f'Failed to retrieve doctor status: {str(e)}'
+            }, status=500)
+
+
+class DoctorStatusUpdateView(APIView):
+    """View for doctors to update their own status"""
+    
+    permission_classes = [permissions.IsAuthenticated, IsAdminOrSuperAdmin]
+    
+    @extend_schema(
+        summary="Update doctor status",
+        description="Update current status, availability, and status note",
+        request=DoctorStatusUpdateSerializer,
+        responses={200: DoctorStatusSerializer},
+        tags=["Doctor Status"]
+    )
+    def put(self, request):
+        try:
+            # Get doctor's status
+            try:
+                status = DoctorStatus.objects.get(doctor=request.user.doctor)
+            except DoctorStatus.DoesNotExist:
+                return Response({
+                    'status': 'error',
+                    'message': 'Doctor status not found'
+                }, status=404)
+            
+            serializer = DoctorStatusUpdateSerializer(status, data=request.data, partial=True, context={'request': request})
+            
+            if serializer.is_valid():
+                serializer.save()
+                
+                # Update activity timestamp
+                status.update_activity()
+                
+                # Return updated status
+                full_serializer = DoctorStatusSerializer(status)
+                
+                # Broadcast the update to all connected WebSocket clients
+                broadcast_doctor_status_update(full_serializer.data)
+                
+                return Response({
+                    'status': 'success',
+                    'message': 'Status updated successfully',
+                    'data': full_serializer.data
+                })
+            else:
+                return Response({
+                    'status': 'error',
+                    'message': 'Invalid data provided',
+                    'errors': serializer.errors
+                }, status=400)
+                
+        except Exception as e:
+            return Response({
+                'status': 'error',
+                'message': f'Failed to update status: {str(e)}'
+            }, status=500)
+
+
+class DoctorStatusStatsView(APIView):
+    """View for getting doctor status statistics"""
+    
+    permission_classes = [permissions.IsAuthenticated, IsAdminOrSuperAdmin]
+    
+    @extend_schema(
+        summary="Get doctor status statistics",
+        description="Retrieve statistics about doctor statuses",
+        responses={200: None},
+        tags=["Doctor Status"]
+    )
+    def get(self, request):
+        try:
+            total_doctors = DoctorStatus.objects.count()
+            online_doctors = DoctorStatus.objects.filter(is_online=True).count()
+            available_doctors = DoctorStatus.objects.filter(is_available=True).count()
+            consulting_doctors = DoctorStatus.objects.filter(current_status='consulting').count()
+            away_doctors = DoctorStatus.objects.filter(current_status='away').count()
+            offline_doctors = DoctorStatus.objects.filter(current_status='offline').count()
+            
+            # Status breakdown
+            status_breakdown = {}
+            for status_choice in DoctorStatus.STATUS_CHOICES:
+                status_breakdown[status_choice[0]] = DoctorStatus.objects.filter(
+                    current_status=status_choice[0]
+                ).count()
+            
+            # Recent activity (doctors active in last 24 hours)
+            from datetime import timedelta
+            yesterday = timezone.now() - timedelta(days=1)
+            recent_activity = DoctorStatus.objects.filter(
+                last_activity__gte=yesterday
+            ).count()
+            
+            stats = {
+                'total_doctors': total_doctors,
+                'online_doctors': online_doctors,
+                'available_doctors': available_doctors,
+                'consulting_doctors': consulting_doctors,
+                'away_doctors': away_doctors,
+                'offline_doctors': offline_doctors,
+                'recent_activity': recent_activity,
+                'status_breakdown': status_breakdown,
+                'online_percentage': round((online_doctors / total_doctors * 100) if total_doctors > 0 else 0, 1),
+                'available_percentage': round((available_doctors / total_doctors * 100) if total_doctors > 0 else 0, 1)
+            }
+            
+            return Response({
+                'status': 'success',
+                'message': 'Doctor status statistics retrieved successfully',
+                'data': stats
+            })
+            
+        except Exception as e:
+            return Response({
+                'status': 'error',
+                'message': f'Failed to retrieve statistics: {str(e)}'
+            }, status=500)
+
+
+def broadcast_doctor_status_update(status_data):
+    """Broadcast doctor status update to all connected WebSocket clients"""
+    channel_layer = get_channel_layer()
+    async_to_sync(channel_layer.group_send)(
+        "doctor_status_updates",
+        {
+            "type": "status_update",
+            "data": status_data
+        }
+    )
+
+def broadcast_notification(user_id, notification_data):
+    """Broadcast notification to specific user"""
+    channel_layer = get_channel_layer()
+    async_to_sync(channel_layer.group_send)(
+        f"notifications_{user_id}",
+        {
+            "type": "notification_message",
+            "data": notification_data
+        }
+    )
+
+def broadcast_consultation_update(consultation_data):
+    """Broadcast consultation update to all connected clients"""
+    channel_layer = get_channel_layer()
+    async_to_sync(channel_layer.group_send)(
+        "consultation_updates",
+        {
+            "type": "consultation_update",
+            "data": consultation_data
+        }
+    )
 

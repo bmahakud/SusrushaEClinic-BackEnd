@@ -1,7 +1,7 @@
 from django.urls import path, include
 from rest_framework.routers import DefaultRouter
 from . import views
-from .views import DoctorSlotViewSet, SuperAdminDoctorManagementView, SuperAdminDoctorDetailView
+from .views import DoctorSlotViewSet, SuperAdminDoctorManagementView, SuperAdminDoctorDetailView, DoctorStatusListView, DoctorStatusStatsView, DoctorStatusUpdateView, DoctorStatusDetailView
 
 app_name = 'doctors'
 
@@ -75,5 +75,13 @@ urlpatterns += [
     path('<str:doctor_id>/slots/<int:pk>/',
          DoctorSlotViewSet.as_view({'get': 'retrieve', 'put': 'update', 'patch': 'partial_update', 'delete': 'destroy'}),
          name='doctor-slot-detail'),
+]
+
+urlpatterns += [
+    # Doctor Status URLs
+    path('status/', DoctorStatusListView.as_view(), name='doctor-status-list'),
+    path('status/stats/', DoctorStatusStatsView.as_view(), name='doctor-status-stats'),
+    path('status/update/', DoctorStatusUpdateView.as_view(), name='doctor-status-update'),
+    path('status/<int:doctor_id>/', DoctorStatusDetailView.as_view(), name='doctor-status-detail'),
 ]
 

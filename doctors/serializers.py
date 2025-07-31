@@ -8,6 +8,7 @@ from .models import (
 )
 from eclinic.models import Clinic
 from utils.signed_urls import get_signed_media_url
+from .models import DoctorStatus
 
 
 class DoctorProfileSerializer(serializers.ModelSerializer):
@@ -339,4 +340,128 @@ class DoctorSlotGenerationSerializer(serializers.Serializer):
             raise serializers.ValidationError("This doctor already has a consultation in this time slot.")
 
         return data
+
+
+class DoctorStatusSerializer(serializers.ModelSerializer):
+    """Serializer for Doctor Status"""
+    
+    doctor_name = serializers.CharField(source='doctor.user.name', read_only=True)
+    doctor_email = serializers.CharField(source='doctor.user.email', read_only=True)
+    doctor_specialization = serializers.CharField(source='doctor.specialization', read_only=True)
+    doctor_profile_picture = serializers.CharField(source='doctor.user.profile_picture', read_only=True)
+    status_display = serializers.CharField(read_only=True)
+    is_active = serializers.BooleanField(read_only=True)
+    last_activity_formatted = serializers.SerializerMethodField()
+    last_login_formatted = serializers.SerializerMethodField()
+    current_consultation_info = serializers.SerializerMethodField()
+    
+    class Meta:
+        model = DoctorStatus
+        fields = [
+            'id', 'doctor', 'doctor_name', 'doctor_email', 'doctor_specialization', 
+            'doctor_profile_picture', 'is_online', 'is_logged_in', 'is_available',
+            'current_status', 'status_display', 'is_active', 'last_activity',
+            'last_activity_formatted', 'last_login', 'last_login_formatted',
+            'current_consultation', 'current_consultation_info', 'status_updated_at',
+            'status_note', 'auto_away_threshold'
+        ]
+        read_only_fields = ['id', 'doctor', 'last_activity', 'last_login', 'status_updated_at']
+    
+    def get_last_activity_formatted(self, obj):
+        """Format last activity time"""
+        if obj.last_activity:
+            now = timezone.now()
+            diff = now - obj.last_activity
+            
+            if diff.days > 0:
+                return f"{diff.days} day(s) ago"
+            elif diff.seconds > 3600:
+                hours = diff.seconds // 3600
+                return f"{hours} hour(s) ago"
+            elif diff.seconds > 60:
+                minutes = diff.seconds // 60
+                return f"{minutes} minute(s) ago"
+            else:
+                return "Just now"
+        return "Never"
+    
+    def get_last_login_formatted(self, obj):
+        """Format last login time"""
+        if obj.last_login:
+            now = timezone.now()
+            diff = now - obj.last_login
+            
+            if diff.days > 0:
+                return f"{diff.days} day(s) ago"
+            elif diff.seconds > 3600:
+                hours = diff.seconds // 3600
+                return f"{hours} hour(s) ago"
+            elif diff.seconds > 60:
+                minutes = diff.seconds // 60
+                return f"{minutes} minute(s) ago"
+            else:
+                return "Just now"
+        return "Never"
+    
+    def get_current_consultation_info(self, obj):
+        """Get current consultation information"""
+        if obj.current_consultation:
+            return {
+                'id': obj.current_consultation.id,
+                'patient_name': obj.current_consultation.patient.name if obj.current_consultation.patient else 'Unknown',
+                'start_time': obj.current_consultation.start_time,
+                'status': obj.current_consultation.status
+            }
+        return None
+
+
+class DoctorStatusUpdateSerializer(serializers.ModelSerializer):
+    """Serializer for updating doctor status"""
+    
+    class Meta:
+        model = DoctorStatus
+        fields = ['current_status', 'status_note', 'is_available']
+    
+    def validate_current_status(self, value):
+        """Validate status change"""
+        user = self.context['request'].user
+        if not hasattr(user, 'doctor'):
+            raise serializers.ValidationError("Only doctors can update their status")
+        return value
+
+
+class DoctorStatusListSerializer(serializers.ModelSerializer):
+    """Serializer for listing doctor statuses with summary info"""
+    
+    doctor_name = serializers.CharField(source='doctor.user.name', read_only=True)
+    doctor_specialization = serializers.CharField(source='doctor.specialization', read_only=True)
+    doctor_profile_picture = serializers.CharField(source='doctor.user.profile_picture', read_only=True)
+    status_display = serializers.CharField(read_only=True)
+    last_activity_formatted = serializers.SerializerMethodField()
+    
+    class Meta:
+        model = DoctorStatus
+        fields = [
+            'id', 'doctor', 'doctor_name', 'doctor_specialization', 
+            'doctor_profile_picture', 'is_online', 'is_available',
+            'current_status', 'status_display', 'last_activity_formatted'
+        ]
+    
+    def get_last_activity_formatted(self, obj):
+        """Format last activity time"""
+        if obj.last_activity:
+            now = timezone.now()
+            diff = now - obj.last_activity
+            
+            if diff.days > 0:
+                return f"{diff.days}d ago"
+            elif diff.seconds > 3600:
+                hours = diff.seconds // 3600
+                return f"{hours}h ago"
+            elif diff.seconds > 60:
+                minutes = diff.seconds // 60
+                return f"{minutes}m ago"
+            else:
+                return "Now"
+        return "Never"
 

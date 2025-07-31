@@ -1,8 +1,9 @@
 from django.contrib import admin
 from .models import (
     DoctorProfile, DoctorSchedule,
-    DoctorEducation, DoctorExperience, DoctorReview, DoctorDocument, DoctorSlot
+    DoctorEducation, DoctorExperience, DoctorReview, DoctorDocument, DoctorSlot, DoctorStatus
 )
+from django.utils import timezone
 
 
 @admin.register(DoctorProfile)
@@ -141,6 +142,103 @@ class DoctorDocumentAdmin(admin.ModelAdmin):
     readonly_fields = [
         'uploaded_at', 'updated_at'
     ]
+
+
+@admin.register(DoctorStatus)
+class DoctorStatusAdmin(admin.ModelAdmin):
+    """Admin interface for Doctor Status"""
+    
+    list_display = [
+        'doctor_name', 'current_status', 'is_online', 'is_available', 
+        'last_activity', 'status_updated_at'
+    ]
+    list_filter = [
+        'current_status', 'is_online', 'is_available', 
+        'status_updated_at', 'last_activity'
+    ]
+    search_fields = ['doctor__name', 'doctor__user__email', 'status_note']
+    readonly_fields = [
+        'doctor', 'last_activity', 'last_login', 'last_logout', 
+        'status_updated_at', 'is_active', 'status_display'
+    ]
+    ordering = ['-last_activity']
+    
+    fieldsets = (
+        ('Doctor Information', {
+            'fields': ('doctor', 'is_active', 'status_display')
+        }),
+        ('Status Information', {
+            'fields': (
+                'current_status', 'is_online', 'is_logged_in', 'is_available',
+                'status_note', 'auto_away_threshold'
+            )
+        }),
+        ('Activity Tracking', {
+            'fields': (
+                'last_activity', 'last_login', 'last_logout', 'status_updated_at'
+            )
+        }),
+        ('Current Consultation', {
+            'fields': ('current_consultation',),
+            'classes': ('collapse',)
+        })
+    )
+    
+    def doctor_name(self, obj):
+        return obj.doctor.user.name if obj.doctor and obj.doctor.user else 'Unknown'
+    doctor_name.short_description = 'Doctor Name'
+    
+    def has_add_permission(self, request):
+        """Only superusers can add doctor statuses"""
+        return request.user.is_superuser
+    
+    def has_delete_permission(self, request, obj=None):
+        """Only superusers can delete doctor statuses"""
+        return request.user.is_superuser
+    
+    actions = ['mark_online', 'mark_offline', 'mark_available', 'mark_unavailable']
+    
+    def mark_online(self, request, queryset):
+        """Mark selected doctors as online"""
+        updated = queryset.update(
+            is_online=True,
+            is_logged_in=True,
+            current_status='available',
+            status_updated_at=timezone.now()
+        )
+        self.message_user(request, f'{updated} doctor(s) marked as online.')
+    mark_online.short_description = "Mark selected doctors as online"
+    
+    def mark_offline(self, request, queryset):
+        """Mark selected doctors as offline"""
+        updated = queryset.update(
+            is_online=False,
+            is_logged_in=False,
+            current_status='offline',
+            status_updated_at=timezone.now()
+        )
+        self.message_user(request, f'{updated} doctor(s) marked as offline.')
+    mark_offline.short_description = "Mark selected doctors as offline"
+    
+    def mark_available(self, request, queryset):
+        """Mark selected doctors as available"""
+        updated = queryset.update(
+            is_available=True,
+            current_status='available',
+            status_updated_at=timezone.now()
+        )
+        self.message_user(request, f'{updated} doctor(s) marked as available.')
+    mark_available.short_description = "Mark selected doctors as available"
+    
+    def mark_unavailable(self, request, queryset):
+        """Mark selected doctors as unavailable"""
+        updated = queryset.update(
+            is_available=False,
+            current_status='unavailable',
+            status_updated_at=timezone.now()
+        )
+        self.message_user(request, f'{updated} doctor(s) marked as unavailable.')
+    mark_unavailable.short_description = "Mark selected doctors as unavailable"
 
 
 admin.site.register(DoctorSlot)

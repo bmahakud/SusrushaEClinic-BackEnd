@@ -52,6 +52,7 @@ THIRD_PARTY_APPS = [
     'django_filters',
     'drf_spectacular',
     'storages',
+    'channels',
 ]
 
 LOCAL_APPS = [
@@ -64,6 +65,7 @@ LOCAL_APPS = [
     'eclinic',
     'analytics',
     'notifications',
+    'websockets',
 ]
 
 INSTALLED_APPS = DJANGO_APPS + THIRD_PARTY_APPS + LOCAL_APPS
@@ -433,3 +435,24 @@ else:
 # OTP Configuration
 OTP_TEST_MODE = True
 OTP_TEST_CODE = '999999'
+
+# WebSocket Configuration
+ASGI_APPLICATION = 'myproject.asgi.application'
+
+# Channel Layers for WebSocket
+CHANNEL_LAYERS = {
+    'default': {
+        'BACKEND': 'channels_redis.core.RedisChannelLayer',
+        'CONFIG': {
+            "hosts": [('127.0.0.1', 6379)],
+        },
+    },
+}
+
+# WebSocket URL patterns
+WEBSOCKET_URLS = {
+    'doctor_status': 'ws/doctor-status/',
+    'notifications': 'ws/notifications/',
+    'consultations': 'ws/consultations/',
+    'chat': 'ws/chat/',
+}

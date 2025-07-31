@@ -405,3 +405,117 @@ class DoctorDocument(models.Model):
     def __str__(self):
         return f"{self.title} - Dr. {self.doctor.name}"
 
+
+class DoctorStatus(models.Model):
+    """Model to track real-time doctor status and activity"""
+    
+    STATUS_CHOICES = [
+        ('available', 'Available'),
+        ('consulting', 'In Consultation'),
+        ('busy', 'Busy'),
+        ('away', 'Away'),
+        ('offline', 'Offline'),
+        ('break', 'On Break'),
+        ('unavailable', 'Unavailable')
+    ]
+    
+    doctor = models.OneToOneField('DoctorProfile', on_delete=models.CASCADE, related_name='status')
+    is_online = models.BooleanField(default=False, help_text="Whether doctor is currently connected")
+    is_logged_in = models.BooleanField(default=False, help_text="Whether doctor is authenticated")
+    is_available = models.BooleanField(default=True, help_text="Whether doctor is available for consultations")
+    current_status = models.CharField(
+        max_length=20, 
+        choices=STATUS_CHOICES, 
+        default='offline',
+        help_text="Current status of the doctor"
+    )
+    last_activity = models.DateTimeField(auto_now=True, help_text="Last activity timestamp")
+    last_login = models.DateTimeField(null=True, blank=True, help_text="Last login timestamp")
+    last_logout = models.DateTimeField(null=True, blank=True, help_text="Last logout timestamp")
+    current_consultation = models.ForeignKey(
+        'consultations.Consultation', 
+        null=True, 
+        blank=True, 
+        on_delete=models.SET_NULL,
+        related_name='active_doctor_status',
+        help_text="Currently active consultation if any"
+    )
+    status_updated_at = models.DateTimeField(auto_now=True, help_text="When status was last updated")
+    status_note = models.TextField(blank=True, help_text="Optional note about current status")
+    auto_away_threshold = models.IntegerField(
+        default=15, 
+        help_text="Minutes of inactivity before auto-away status"
+    )
+    
+    class Meta:
+        verbose_name = "Doctor Status"
+        verbose_name_plural = "Doctor Statuses"
+        ordering = ['-last_activity']
+    
+    def __str__(self):
+        return f"{self.doctor.name} - {self.current_status}"
+    
+    @property
+    def is_active(self):
+        """Check if doctor is currently active (online and available)"""
+        return self.is_online and self.is_available and self.current_status in ['available', 'consulting']
+    
+    @property
+    def status_display(self):
+        """Get human-readable status with activity time"""
+        if self.current_status == 'offline':
+            return f"Offline (Last seen: {self.last_activity.strftime('%H:%M')})"
+        elif self.current_status == 'away':
+            return f"Away (Since: {self.last_activity.strftime('%H:%M')})"
+        else:
+            return self.get_current_status_display()
+    
+    def update_status(self, status, note=""):
+        """Update doctor status"""
+        self.current_status = status
+        self.status_note = note
+        self.status_updated_at = timezone.now()
+        self.save()
+    
+    def mark_online(self):
+        """Mark doctor as online"""
+        self.is_online = True
+        self.is_logged_in = True
+        self.last_login = timezone.now()
+        if self.current_status == 'offline':
+            self.current_status = 'available'
+        self.save()
+    
+    def mark_offline(self):
+        """Mark doctor as offline"""
+        self.is_online = False
+        self.is_logged_in = False
+        self.current_status = 'offline'
+        self.last_logout = timezone.now()
+        self.current_consultation = None
+        self.save()
+    
+    def start_consultation(self, consultation):
+        """Start a consultation"""
+        self.current_status = 'consulting'
+        self.current_consultation = consultation
+        self.is_available = False
+        self.save()
+    
+    def end_consultation(self):
+        """End current consultation"""
+        self.current_status = 'available'
+        self.current_consultation = None
+        self.is_available = True
+        self.save()
+    
+    def update_activity(self):
+        """Update last activity timestamp"""
+        self.last_activity = timezone.now()
+        # Auto-away logic
+        if self.is_online and self.current_status == 'available':
+            time_diff = timezone.now() - self.last_activity
+            if time_diff.total_seconds() > (self.auto_away_threshold * 60):
+                self.current_status = 'away'
+        self.save()
+
