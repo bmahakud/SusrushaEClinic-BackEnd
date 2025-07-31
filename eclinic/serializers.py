@@ -12,6 +12,7 @@ from utils.signed_urls import get_signed_media_url
 class ClinicSerializer(serializers.ModelSerializer):
     admin = serializers.PrimaryKeyRelatedField(queryset=User.objects.filter(role='admin'), required=True)
     admin_name = serializers.CharField(source='admin.name', read_only=True)
+    admin_phone = serializers.CharField(source='admin.phone', read_only=True)
     cover_image = serializers.SerializerMethodField()
 
     class Meta:
@@ -25,7 +26,7 @@ class ClinicSerializer(serializers.ModelSerializer):
             'registration_number', 'license_number', 'accreditation',
             'cover_image', 'gallery_images',
             'is_active', 'is_verified', 'accepts_online_consultations',
-            'admin', 'admin_name', 'created_at', 'updated_at'
+            'consultation_duration', 'admin', 'admin_name', 'admin_phone', 'created_at', 'updated_at'
         ]
         read_only_fields = ['id', 'created_at', 'updated_at', 'is_verified']
 
@@ -62,7 +63,7 @@ class ClinicCreateSerializer(serializers.ModelSerializer):
             'registration_number', 'license_number', 'accreditation',
             'cover_image', 'gallery_images',
             'is_active', 'accepts_online_consultations',
-            'admin',
+            'consultation_duration', 'admin',
         ]
 
     def to_internal_value(self, data):
@@ -285,7 +286,7 @@ class ClinicListSerializer(serializers.ModelSerializer):
             'id', 'name', 'clinic_type', 'description', 'admin_name',
             'phone', 'email', 'street', 'city', 'state', 'country',
             'total_doctors', 'average_rating', 'is_verified', 'is_active',
-            'accepts_online_consultations', 'accepts_walk_ins', 'created_at'
+            'accepts_online_consultations', 'consultation_duration', 'created_at'
         ]
         read_only_fields = ['id', 'total_doctors', 'average_rating', 'created_at']
     

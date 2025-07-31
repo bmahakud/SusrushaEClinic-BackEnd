@@ -40,15 +40,15 @@ urlpatterns = [
     path('api/payments/', include('payments.urls')),
     path('api/eclinic/', include('eclinic.urls')),
     path('api/analytics/', include('analytics.urls')),
+    path('api/notifications/', include('notifications.urls')),
 ]
 
 # Serve media files in development
 if settings.DEBUG:
     urlpatterns += static(settings.MEDIA_URL, document_root=settings.MEDIA_ROOT)
     urlpatterns += static('/assets/', document_root=settings.BASE_DIR / 'build' / 'assets')
-    urlpatterns += [
-        path('<path:path>', serve, {'document_root': settings.BASE_DIR / 'build'}),
-    ]
+
+# Frontend catch-all route (only for non-API paths)
 urlpatterns += [
     path('', TemplateView.as_view(template_name='index.html')),
 ]

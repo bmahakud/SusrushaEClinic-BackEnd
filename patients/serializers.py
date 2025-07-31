@@ -12,6 +12,15 @@ class PatientProfileSerializer(serializers.ModelSerializer):
     date_of_birth = serializers.DateField(source='user.date_of_birth', read_only=True)
     gender = serializers.CharField(source='user.gender', read_only=True)
     age = serializers.ReadOnlyField()
+    medical_history = serializers.CharField(source='user.medical_history', read_only=True)
+    street = serializers.CharField(source='user.street', read_only=True)
+    city = serializers.CharField(source='user.city', read_only=True)
+    state = serializers.CharField(source='user.state', read_only=True)
+    pincode = serializers.CharField(source='user.pincode', read_only=True)
+    country = serializers.CharField(source='user.country', read_only=True)
+    emergency_contact_name = serializers.CharField(source='user.emergency_contact_name', read_only=True)
+    emergency_contact_phone = serializers.CharField(source='user.emergency_contact_phone', read_only=True)
+    emergency_contact_relationship = serializers.CharField(source='user.emergency_contact_relationship', read_only=True)
     
     class Meta:
         model = PatientProfile
@@ -20,7 +29,9 @@ class PatientProfileSerializer(serializers.ModelSerializer):
             'date_of_birth', 'gender', 'blood_group',
             'allergies', 'chronic_conditions', 'current_medications',
             'insurance_provider', 'insurance_policy_number', 'insurance_expiry',
-            'preferred_language',
+            'preferred_language', 'medical_history',
+            'street', 'city', 'state', 'pincode', 'country',
+            'emergency_contact_name', 'emergency_contact_phone', 'emergency_contact_relationship',
             'created_at', 'updated_at', 'age'
         ]
         read_only_fields = ['id', 'user', 'created_at', 'updated_at']

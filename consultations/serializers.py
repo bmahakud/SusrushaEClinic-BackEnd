@@ -21,7 +21,7 @@ class ConsultationSerializer(serializers.ModelSerializer):
             'consultation_type', 'scheduled_date', 'scheduled_time', 'duration',
             'status', 'doctor_notes', 'patient_notes', 'payment_status', 
             'consultation_fee', 'is_paid', 'created_at', 'updated_at',
-            'doctor_meeting_link',
+            'doctor_meeting_link', 'booked_slot',
         ]
         read_only_fields = ['id', 'created_at', 'updated_at']
 
@@ -33,61 +33,67 @@ class ConsultationSerializer(serializers.ModelSerializer):
 
 class ConsultationCreateSerializer(serializers.ModelSerializer):
     """Serializer for creating consultation"""
+    slot_id = serializers.IntegerField(write_only=True, help_text="ID of the doctor slot to book")
     
     class Meta:
         model = Consultation
         fields = [
             'patient', 'doctor', 'consultation_type', 'scheduled_date',
             'scheduled_time', 'duration', 'chief_complaint', 'symptoms',
-            'consultation_fee'
+            'consultation_fee', 'slot_id'
         ]
     
     def create(self, validated_data):
-        """Create consultation"""
+        """Create consultation and book the slot"""
+        slot_id = validated_data.pop('slot_id')
+        
+        # Get the slot and validate it's available
+        from doctors.models import DoctorSlot
+        try:
+            slot = DoctorSlot.objects.get(id=slot_id)
+        except DoctorSlot.DoesNotExist:
+            raise serializers.ValidationError("Invalid slot ID")
+        
+        if not slot.is_available or slot.is_booked:
+            raise serializers.ValidationError("This slot is not available for booking")
+        
+        # Set consultation data from slot
+        validated_data['scheduled_date'] = slot.date
+        validated_data['scheduled_time'] = slot.start_time
+        validated_data['duration'] = slot.clinic.consultation_duration
+        validated_data['clinic'] = slot.clinic
         validated_data['status'] = 'scheduled'
         validated_data['payment_status'] = 'pending'
-        return super().create(validated_data)
+        
+        # Create the consultation
+        consultation = super().create(validated_data)
+        
+        # Book the slot
+        slot.is_booked = True
+        slot.booked_consultation = consultation
+        slot.save()
+        
+        return consultation
 
     def validate(self, data):
-        doctor = data['doctor']
-        scheduled_date = data['scheduled_date']
-        scheduled_time = data['scheduled_time']
-        duration = data['duration']
-        clinic = data.get('clinic')
-
-        from datetime import datetime, timedelta
-        start_dt = datetime.combine(scheduled_date, scheduled_time)
-        end_dt = start_dt + timedelta(minutes=duration)
-        new_start = scheduled_time
-        new_end = end_dt.time()
-
-        # Doctor overlap logic
-        overlapping_doctor = Consultation.objects.filter(
-            doctor=doctor,
-            scheduled_date=scheduled_date,
-            status__in=['scheduled', 'in_progress']
-        ).exclude(
-            scheduled_time__gte=new_end
-        ).exclude(
-            scheduled_time__lte=new_start
-        )
-        if overlapping_doctor.exists():
-            raise serializers.ValidationError("This doctor already has a consultation in this time slot.")
-
-        # Clinic overlap logic
-        if clinic:
-            overlapping_clinic = Consultation.objects.filter(
-                clinic=clinic,
-                scheduled_date=scheduled_date,
-                status__in=['scheduled', 'in_progress']
-            ).exclude(
-                scheduled_time__gte=new_end
-            ).exclude(
-                scheduled_time__lte=new_start
-            )
-            if overlapping_clinic.exists():
-                raise serializers.ValidationError("This clinic already has a consultation in this time slot.")
-
+        slot_id = data.get('slot_id')
+        if not slot_id:
+            raise serializers.ValidationError("Slot ID is required")
+        
+        # Validate slot exists and is available
+        from doctors.models import DoctorSlot
+        try:
+            slot = DoctorSlot.objects.get(id=slot_id)
+        except DoctorSlot.DoesNotExist:
+            raise serializers.ValidationError("Invalid slot ID")
+        
+        if not slot.is_available or slot.is_booked:
+            raise serializers.ValidationError("This slot is not available for booking")
+        
+        # Validate doctor matches slot
+        if data.get('doctor') and data['doctor'] != slot.doctor:
+            raise serializers.ValidationError("Doctor does not match the selected slot")
+        
         return data
 
 
@@ -339,7 +345,7 @@ class ConsultationDetailSerializer(serializers.ModelSerializer):
     patient_name = serializers.CharField(source='patient.name', read_only=True)
     doctor_name = serializers.CharField(source='doctor.name', read_only=True)
     doctor_meeting_link = serializers.SerializerMethodField(read_only=True)
-    symptoms = ConsultationSymptomSerializer(many=True, read_only=True)
+    recorded_symptoms = ConsultationSymptomSerializer(many=True, read_only=True)
     diagnoses = ConsultationDiagnosisSerializer(many=True, read_only=True)
     vital_signs = ConsultationVitalSignsSerializer(many=True, read_only=True)
     attachments = ConsultationAttachmentSerializer(many=True, read_only=True)
@@ -357,7 +363,7 @@ class ConsultationDetailSerializer(serializers.ModelSerializer):
             'parent_consultation', 'follow_up_required', 'follow_up_date',
             'doctor_notes', 'patient_notes', 'prescription_given',
             'cancelled_by', 'cancellation_reason', 'cancelled_at',
-            'symptoms', 'diagnoses', 'vital_signs', 'attachments', 'notes', 'reschedules',
+            'recorded_symptoms', 'diagnoses', 'vital_signs', 'attachments', 'notes', 'reschedules',
             'created_at', 'updated_at',
             'doctor_meeting_link',
         ]

@@ -13,7 +13,11 @@ class PatientProfile(models.Model):
     )
     
     # Medical Information
-    blood_group = models.CharField(max_length=5, blank=True)
+    BLOOD_GROUP_CHOICES = [
+        ('A+', 'A+'), ('A-', 'A-'), ('B+', 'B+'), ('B-', 'B-'),
+        ('AB+', 'AB+'), ('AB-', 'AB-'), ('O+', 'O+'), ('O-', 'O-')
+    ]
+    blood_group = models.CharField(max_length=5, choices=BLOOD_GROUP_CHOICES, blank=True)
     allergies = models.TextField(blank=True, help_text="Known allergies")
     chronic_conditions = models.JSONField(default=list, help_text="List of chronic conditions")
     current_medications = models.JSONField(default=list, help_text="List of current medications")

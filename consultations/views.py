@@ -27,6 +27,7 @@ from .serializers import (
     ConsultationListSerializer, ConsultationSearchSerializer, ConsultationStatsSerializer,
     ConsultationDetailSerializer
 )
+from doctors.serializers import DoctorSlotSerializer
 
 
 class ConsultationPagination(PageNumberPagination):
@@ -61,7 +62,7 @@ class ConsultationViewSet(ModelViewSet):
     def get_queryset(self):
         """Filter queryset based on user role"""
         user = self.request.user
-        queryset = Consultation.objects.select_related('patient', 'doctor')
+        queryset = Consultation.objects.select_related('patient', 'doctor', 'clinic')
         
         if user.role == 'patient':
             # Patients can only see their own consultations
@@ -69,8 +70,17 @@ class ConsultationViewSet(ModelViewSet):
         elif user.role == 'doctor':
             # Doctors can see consultations they are assigned to
             return queryset.filter(doctor=user)
-        elif user.role in ['admin', 'superadmin']:
-            # Admins can see all consultations
+        elif user.role == 'admin':
+            # Admins can only see consultations for their assigned clinic
+            try:
+                # Get the clinic that this admin is assigned to
+                assigned_clinic = user.administered_clinic
+                return queryset.filter(clinic=assigned_clinic)
+            except:
+                # If admin is not assigned to any clinic, return empty queryset
+                return queryset.none()
+        elif user.role == 'superadmin':
+            # SuperAdmin can see all consultations
             return queryset
         
         return queryset.none()
@@ -143,6 +153,92 @@ class ConsultationViewSet(ModelViewSet):
             },
             'timestamp': timezone.now().isoformat()
         }, status=status.HTTP_400_BAD_REQUEST)
+
+    @action(detail=False, methods=['get'], url_path='doctor/my-consultations')
+    def doctor_consultations(self, request):
+        """Get consultations for the logged-in doctor"""
+        if request.user.role != 'doctor':
+            return Response({
+                'success': False,
+                'error': {
+                    'code': 'PERMISSION_DENIED',
+                    'message': 'Only doctors can access this endpoint'
+                }
+            }, status=status.HTTP_403_FORBIDDEN)
+        
+        # Get consultations for the logged-in doctor
+        consultations = Consultation.objects.filter(
+            doctor=request.user
+        ).select_related('patient', 'doctor', 'clinic').order_by(
+            'scheduled_date', 'scheduled_time'
+        )
+        
+        # Apply status filter if provided
+        status_filter = request.query_params.get('status')
+        if status_filter:
+            consultations = consultations.filter(status=status_filter)
+        
+        # Apply date filter if provided
+        date_filter = request.query_params.get('date')
+        if date_filter:
+            consultations = consultations.filter(scheduled_date=date_filter)
+        
+        serializer = ConsultationListSerializer(consultations, many=True)
+        
+        return Response({
+            'success': True,
+            'data': serializer.data,
+            'message': f'Found {len(serializer.data)} consultations for doctor',
+            'timestamp': timezone.now().isoformat()
+        }, status=status.HTTP_200_OK)
+
+    @action(detail=False, methods=['get'])
+    def available_slots(self, request):
+        """Get available slots for consultation booking"""
+        doctor_id = request.query_params.get('doctor_id')
+        clinic_id = request.query_params.get('clinic_id')
+        date = request.query_params.get('date')
+        
+        if not doctor_id or not clinic_id or not date:
+            return Response({
+                'success': False,
+                'error': {
+                    'code': 'MISSING_PARAMETERS',
+                    'message': 'doctor_id, clinic_id, and date are required'
+                },
+                'timestamp': timezone.now().isoformat()
+            }, status=status.HTTP_400_BAD_REQUEST)
+        
+        try:
+            from datetime import datetime
+            date_obj = datetime.strptime(date, '%Y-%m-%d').date()
+        except ValueError:
+            return Response({
+                'success': False,
+                'error': {
+                    'code': 'INVALID_DATE',
+                    'message': 'Invalid date format. Use YYYY-MM-DD'
+                },
+                'timestamp': timezone.now().isoformat()
+            }, status=status.HTTP_400_BAD_REQUEST)
+        
+        # Get available slots
+        from doctors.models import DoctorSlot
+        slots = DoctorSlot.objects.filter(
+            doctor_id=doctor_id,
+            clinic_id=clinic_id,
+            date=date_obj,
+            is_available=True,
+            is_booked=False
+        ).order_by('start_time')
+        
+        serializer = DoctorSlotSerializer(slots, many=True)
+        return Response({
+            'success': True,
+            'data': serializer.data,
+            'message': f'Available slots for {date}',
+            'timestamp': timezone.now().isoformat()
+        }, status=status.HTTP_200_OK)
     
     @action(detail=True, methods=['post'])
     def start(self, request, pk=None):
@@ -354,7 +450,19 @@ class ConsultationSearchView(APIView):
             queryset = queryset.filter(patient=user)
         elif user.role == 'doctor':
             queryset = queryset.filter(doctor=user)
-        elif user.role not in ['admin', 'superadmin']:
+        elif user.role == 'admin':
+            # Admins can only see consultations for their assigned clinic
+            try:
+                # Get the clinic that this admin is assigned to
+                assigned_clinic = user.administered_clinic
+                queryset = queryset.filter(clinic=assigned_clinic)
+            except:
+                # If admin is not assigned to any clinic, return empty queryset
+                queryset = queryset.none()
+        elif user.role == 'superadmin':
+            # SuperAdmin can see all consultations
+            pass
+        else:
             return Response({
                 'success': False,
                 'error': {
@@ -428,8 +536,10 @@ class ConsultationStatsView(APIView):
     )
     def get(self, request):
         """Get consultation statistics"""
+        user = request.user
+        
         # Check permissions
-        if request.user.role not in ['admin', 'superadmin']:
+        if user.role not in ['admin', 'superadmin']:
             return Response({
                 'success': False,
                 'error': {
@@ -439,21 +549,34 @@ class ConsultationStatsView(APIView):
                 'timestamp': timezone.now().isoformat()
             }, status=status.HTTP_403_FORBIDDEN)
         
+        # Apply role-based filtering
+        if user.role == 'admin':
+            try:
+                # Get the clinic that this admin is assigned to
+                assigned_clinic = user.administered_clinic
+                base_queryset = Consultation.objects.filter(clinic=assigned_clinic)
+            except:
+                # If admin is not assigned to any clinic, return empty stats
+                base_queryset = Consultation.objects.none()
+        else:
+            # SuperAdmin can see all consultations
+            base_queryset = Consultation.objects.all()
+        
         # Calculate statistics
-        total_consultations = Consultation.objects.count()
-        completed_consultations = Consultation.objects.filter(status='completed').count()
-        cancelled_consultations = Consultation.objects.filter(status='cancelled').count()
-        pending_consultations = Consultation.objects.filter(status='scheduled').count()
+        total_consultations = base_queryset.count()
+        completed_consultations = base_queryset.filter(status='completed').count()
+        cancelled_consultations = base_queryset.filter(status='cancelled').count()
+        pending_consultations = base_queryset.filter(status='scheduled').count()
         
         # Consultation type distribution
         consultation_type_distribution = dict(
-            Consultation.objects.values('consultation_type').annotate(
+            base_queryset.values('consultation_type').annotate(
                 count=Count('consultation_type')
             ).values_list('consultation_type', 'count')
         )
         
         # Average duration and rating
-        completed_consultations_qs = Consultation.objects.filter(
+        completed_consultations_qs = base_queryset.filter(
             status='completed', started_at__isnull=False, ended_at__isnull=False
         )
         
@@ -465,21 +588,21 @@ class ConsultationStatsView(APIView):
             ])
             avg_duration = total_duration / completed_consultations_qs.count()
         
-        avg_rating = Consultation.objects.filter(
+        avg_rating = base_queryset.filter(
             rating__isnull=False
         ).aggregate(avg_rating=Avg('rating'))['avg_rating'] or 0
         
         # Revenue stats
-        total_revenue = Consultation.objects.filter(
+        total_revenue = base_queryset.filter(
             payment_status='paid'
         ).aggregate(total=Sum('consultation_fee'))['total'] or 0
         
         revenue_stats = {
             'total_revenue': total_revenue,
-            'average_consultation_fee': Consultation.objects.aggregate(
+            'average_consultation_fee': base_queryset.aggregate(
                 avg_fee=Avg('consultation_fee')
             )['avg_fee'] or 0,
-            'pending_payments': Consultation.objects.filter(
+            'pending_payments': base_queryset.filter(
                 payment_status='pending'
             ).aggregate(total=Sum('consultation_fee'))['total'] or 0
         }
@@ -490,7 +613,7 @@ class ConsultationStatsView(APIView):
             month_start = timezone.now().replace(day=1) - timedelta(days=30*i)
             month_end = month_start + timedelta(days=30)
             
-            month_consultations = Consultation.objects.filter(
+            month_consultations = base_queryset.filter(
                 created_at__gte=month_start,
                 created_at__lt=month_end
             ).count()

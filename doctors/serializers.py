@@ -6,6 +6,7 @@ from .models import (
     DoctorProfile, DoctorEducation, DoctorExperience, 
     DoctorDocument, DoctorSchedule, DoctorReview, DoctorSlot
 )
+from eclinic.models import Clinic
 from utils.signed_urls import get_signed_media_url
 
 
@@ -234,10 +235,13 @@ class DoctorScheduleCreateSerializer(serializers.ModelSerializer):
 class DoctorSlotSerializer(serializers.ModelSerializer):
     """Serializer for doctor slots (multiple slots per day)"""
     doctor = serializers.PrimaryKeyRelatedField(read_only=True)
+    clinic_name = serializers.CharField(source='clinic.name', read_only=True)
+    
     class Meta:
         model = DoctorSlot
         fields = [
-            'id', 'doctor', 'date', 'start_time', 'end_time', 'is_available', 'created_at', 'updated_at'
+            'id', 'doctor', 'clinic', 'clinic_name', 'date', 'start_time', 'end_time', 
+            'is_available', 'is_booked', 'booked_consultation', 'created_at', 'updated_at'
         ]
         read_only_fields = ['id', 'doctor', 'created_at', 'updated_at']
 
@@ -245,6 +249,11 @@ class DoctorSlotSerializer(serializers.ModelSerializer):
         doctor_id = self.context['view'].kwargs.get('doctor_id')
         doctor = User.objects.get(id=doctor_id)
         validated_data['doctor'] = doctor
+        
+        # If clinic is not provided, we need to handle this
+        if 'clinic' not in validated_data:
+            raise serializers.ValidationError("Clinic is required for creating slots")
+        
         return super().create(validated_data)
 
     def to_representation(self, instance):
@@ -257,7 +266,49 @@ class DoctorSlotSerializer(serializers.ModelSerializer):
                     data[field] = dt.astimezone(ist).isoformat()
         return data
 
+
+class DoctorSlotGenerationSerializer(serializers.Serializer):
+    """Serializer for generating slots from doctor availability"""
+    clinic = serializers.PrimaryKeyRelatedField(queryset=Clinic.objects.all())
+    date = serializers.DateField()
+    start_time = serializers.TimeField()
+    end_time = serializers.TimeField()
+    
     def validate(self, data):
+        clinic = data['clinic']
+        date = data['date']
+        start_time = data['start_time']
+        end_time = data['end_time']
+        
+        # Check if clinic has consultation duration set
+        if not clinic.consultation_duration:
+            raise serializers.ValidationError("Clinic consultation duration is not set")
+        
+        # Validate time range
+        if start_time >= end_time:
+            raise serializers.ValidationError("Start time must be before end time")
+        
+        # Check if date is not in the past
+        from datetime import date as date_today
+        if date < date_today():
+            raise serializers.ValidationError("Cannot create slots for past dates")
+        
+        return data
+    
+    def create(self, validated_data):
+        doctor_id = self.context['view'].kwargs.get('doctor_id')
+        doctor = User.objects.get(id=doctor_id)
+        
+        # Generate slots using the model method
+        slots = DoctorSlot.generate_slots_for_availability(
+            doctor=doctor,
+            clinic=validated_data['clinic'],
+            date=validated_data['date'],
+            start_time=validated_data['start_time'],
+            end_time=validated_data['end_time']
+        )
+        
+        return slots
         # Get doctor from context since it's read-only in the serializer
         doctor_id = self.context['view'].kwargs.get('doctor_id')
         if not doctor_id:

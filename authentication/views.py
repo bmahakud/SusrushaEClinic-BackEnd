@@ -974,6 +974,9 @@ class AdminDetailView(APIView):
         """Update admin account details"""
         try:
             admin = User.objects.get(id=admin_id, role='admin')
+            print(f"Updating admin: {admin.id}, current email: {admin.email}")
+            print(f"Request data: {request.data}")
+            
             serializer = UpdateProfileSerializer(admin, data=request.data, partial=True)
             
             if serializer.is_valid():
@@ -986,6 +989,7 @@ class AdminDetailView(APIView):
                     'timestamp': timezone.now().isoformat()
                 }, status=status.HTTP_200_OK)
             
+            print(f"Validation errors: {serializer.errors}")
             return Response({
                 'success': False,
                 'error': {

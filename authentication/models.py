@@ -75,7 +75,11 @@ class User(AbstractBaseUser, PermissionsMixin):
     emergency_contact_relationship = models.CharField(max_length=50, blank=True)
     
     # Medical information (for patients)
-    blood_group = models.CharField(max_length=5, blank=True)
+    BLOOD_GROUP_CHOICES = [
+        ('A+', 'A+'), ('A-', 'A-'), ('B+', 'B+'), ('B-', 'B-'),
+        ('AB+', 'AB+'), ('AB-', 'AB-'), ('O+', 'O+'), ('O-', 'O-')
+    ]
+    blood_group = models.CharField(max_length=5, choices=BLOOD_GROUP_CHOICES, blank=True)
     allergies = models.TextField(blank=True)
     medical_history = models.TextField(blank=True)
     

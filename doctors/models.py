@@ -152,10 +152,26 @@ class DoctorSlot(models.Model):
         on_delete=models.CASCADE,
         related_name='slots'
     )
+    clinic = models.ForeignKey(
+        'eclinic.Clinic',
+        on_delete=models.CASCADE,
+        related_name='doctor_slots',
+        help_text="Clinic for which this slot is created",
+        null=True,
+        blank=True
+    )
     date = models.DateField()
     start_time = models.TimeField()
     end_time = models.TimeField()
     is_available = models.BooleanField(default=True)
+    is_booked = models.BooleanField(default=False, help_text="Whether this slot is booked for a consultation")
+    booked_consultation = models.ForeignKey(
+        'consultations.Consultation',
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name='booked_slots'
+    )
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
 
@@ -163,12 +179,63 @@ class DoctorSlot(models.Model):
         db_table = 'doctor_slots'
         verbose_name = 'Doctor Slot'
         verbose_name_plural = 'Doctor Slots'
-        unique_together = ['doctor', 'date', 'start_time', 'end_time']
+        unique_together = ['doctor', 'clinic', 'date', 'start_time', 'end_time']
         ordering = ['date', 'start_time']
 
     def __str__(self):
         status = "Available" if self.is_available else "Unavailable"
         return f"{self.doctor.name} - {self.date} {self.start_time}-{self.end_time} ({status})"
+
+    @classmethod
+    def generate_slots_for_availability(cls, doctor, clinic, date, start_time, end_time):
+        """
+        Generate individual consultation slots based on doctor availability and clinic consultation duration
+        
+        Args:
+            doctor: Doctor user object
+            clinic: Clinic object
+            date: Date for which slots are to be generated
+            start_time: Start time of availability (time object)
+            end_time: End time of availability (time object)
+        
+        Returns:
+            List of created DoctorSlot objects
+        """
+        from datetime import datetime, timedelta
+        
+        # Get clinic consultation duration
+        consultation_duration = clinic.consultation_duration  # in minutes
+        
+        # Convert times to datetime for easier manipulation
+        start_datetime = datetime.combine(date, start_time)
+        end_datetime = datetime.combine(date, end_time)
+        
+        slots = []
+        current_time = start_datetime
+        
+        while current_time < end_datetime:
+            slot_end_time = current_time + timedelta(minutes=consultation_duration)
+            
+            # Don't create slot if it would exceed the end time
+            if slot_end_time > end_datetime:
+                break
+            
+            # Create slot
+            slot = cls.objects.create(
+                doctor=doctor,
+                clinic=clinic,
+                date=date,
+                start_time=current_time.time(),
+                end_time=slot_end_time.time(),
+                is_available=True,
+                is_booked=False
+            )
+            slots.append(slot)
+            
+            # Move to next slot
+            current_time = slot_end_time
+        
+        return slots
 
 
 class DoctorEducation(models.Model):

@@ -4,7 +4,7 @@ from .models import Clinic
 @admin.register(Clinic)
 class ClinicAdmin(admin.ModelAdmin):
     list_display = [
-        'id', 'name', 'admin', 'is_active', 'is_verified', 'created_at'
+        'id', 'name', 'admin', 'consultation_duration', 'is_active', 'is_verified', 'created_at'
     ]
     list_filter = ['is_active', 'is_verified', 'city', 'state', 'country']
     search_fields = ['name', 'admin__name', 'city', 'state', 'country', 'registration_number']
@@ -34,6 +34,9 @@ class ClinicAdmin(admin.ModelAdmin):
         }),
         ('Status', {
             'fields': ('is_active', 'is_verified', 'accepts_online_consultations')
+        }),
+        ('Consultation Settings', {
+            'fields': ('consultation_duration',)
         }),
         ('Timestamps', {
             'fields': ('created_at', 'updated_at')

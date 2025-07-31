@@ -4,6 +4,7 @@ from rest_framework.response import Response
 from rest_framework.views import APIView
 from rest_framework.viewsets import ModelViewSet
 from rest_framework.pagination import PageNumberPagination
+from django_filters.rest_framework import DjangoFilterBackend
 from django.utils import timezone
 from django.db.models import Q, Count, Avg
 from django.shortcuts import get_object_or_404
@@ -34,10 +35,29 @@ class PatientProfileViewSet(ModelViewSet):
     queryset = PatientProfile.objects.all()
     permission_classes = [permissions.IsAuthenticated]
     pagination_class = PatientPagination
-    filter_backends = [filters.SearchFilter, filters.OrderingFilter]
+    filter_backends = [DjangoFilterBackend, filters.SearchFilter, filters.OrderingFilter]
+    filterset_fields = ['blood_group']
     search_fields = ['user__name', 'user__phone', 'user__email']
     ordering_fields = ['created_at', 'user__name', 'date_of_birth']
     ordering = ['-created_at']
+    
+    def get_object(self):
+        """Override to handle patient profile ID lookup"""
+        patient_id = self.kwargs.get('pk')
+        try:
+            # First try to find patient profile by its own ID
+            patient_profile = PatientProfile.objects.get(id=patient_id)
+            self.check_object_permissions(self.request, patient_profile)
+            return patient_profile
+        except PatientProfile.DoesNotExist:
+            try:
+                # If not found by ID, try to find by user ID
+                patient_profile = PatientProfile.objects.get(user__id=patient_id)
+                self.check_object_permissions(self.request, patient_profile)
+                return patient_profile
+            except PatientProfile.DoesNotExist:
+                from django.http import Http404
+                raise Http404("Patient profile not found")
     
     def get_serializer_class(self):
         """Return appropriate serializer based on action"""
@@ -48,7 +68,7 @@ class PatientProfileViewSet(ModelViewSet):
         return PatientProfileSerializer
     
     def get_queryset(self):
-        """Filter queryset based on user role"""
+        """Filter queryset based on user role and custom filters"""
         user = self.request.user
         queryset = PatientProfile.objects.select_related('user')
         
@@ -62,9 +82,39 @@ class PatientProfileViewSet(ModelViewSet):
             ).distinct()
         elif user.role in ['admin', 'superadmin']:
             # Admins can see all patients
-            return queryset
+            pass
+        else:
+            return queryset.none()
         
-        return queryset.none()
+        # Apply custom filters
+        city = self.request.query_params.get('city')
+        state = self.request.query_params.get('state')
+        gender = self.request.query_params.get('gender')
+        age_min = self.request.query_params.get('age_min')
+        age_max = self.request.query_params.get('age_max')
+        
+        if city:
+            queryset = queryset.filter(user__city__icontains=city)
+        
+        if state:
+            queryset = queryset.filter(user__state__icontains=state)
+        
+        if gender:
+            queryset = queryset.filter(user__gender=gender)
+        
+        # Apply age filters
+        if age_min or age_max:
+            today = timezone.now().date()
+            
+            if age_min:
+                max_birth_date = today - timedelta(days=int(age_min) * 365)
+                queryset = queryset.filter(user__date_of_birth__lte=max_birth_date)
+            
+            if age_max:
+                min_birth_date = today - timedelta(days=(int(age_max) + 1) * 365)
+                queryset = queryset.filter(user__date_of_birth__gte=min_birth_date)
+        
+        return queryset
     
     @extend_schema(
         responses={200: PatientProfileSerializer},

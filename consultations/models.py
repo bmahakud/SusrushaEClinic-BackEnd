@@ -97,6 +97,15 @@ class Consultation(models.Model):
     cancellation_reason = models.TextField(blank=True)
     cancelled_at = models.DateTimeField(null=True, blank=True)
     
+    # Slot relationship
+    booked_slot = models.ForeignKey(
+        'doctors.DoctorSlot',
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name='booked_consultations'
+    )
+    
     # Metadata
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)

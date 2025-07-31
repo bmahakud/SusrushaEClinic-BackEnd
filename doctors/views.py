@@ -23,7 +23,8 @@ from .serializers import (
     DoctorEducationSerializer, DoctorExperienceSerializer,
     DoctorDocumentSerializer, DoctorScheduleSerializer,
     DoctorReviewSerializer, DoctorListSerializer, DoctorSearchSerializer,
-    DoctorStatsSerializer, DoctorScheduleCreateSerializer, DoctorSlotSerializer
+    DoctorStatsSerializer, DoctorScheduleCreateSerializer, DoctorSlotSerializer,
+    DoctorSlotGenerationSerializer
 )
 
 
@@ -331,6 +332,85 @@ class DoctorSlotViewSet(ModelViewSet):
             },
             'timestamp': timezone.now().isoformat()
         }, status=status.HTTP_400_BAD_REQUEST)
+
+    @action(detail=False, methods=['post'])
+    def generate_slots(self, request, doctor_id=None):
+        """Generate consultation slots from doctor availability"""
+        serializer = DoctorSlotGenerationSerializer(data=request.data, context={'view': self})
+        if serializer.is_valid():
+            try:
+                slots = serializer.create(serializer.validated_data)
+                slot_serializer = DoctorSlotSerializer(slots, many=True)
+                return Response({
+                    'success': True,
+                    'data': slot_serializer.data,
+                    'message': f'Successfully generated {len(slots)} consultation slots',
+                    'timestamp': timezone.now().isoformat()
+                }, status=status.HTTP_201_CREATED)
+            except Exception as e:
+                return Response({
+                    'success': False,
+                    'error': {
+                        'code': 'SLOT_GENERATION_ERROR',
+                        'message': str(e)
+                    },
+                    'timestamp': timezone.now().isoformat()
+                }, status=status.HTTP_400_BAD_REQUEST)
+        return Response({
+            'success': False,
+            'error': {
+                'code': 'VALIDATION_ERROR',
+                'message': 'Invalid data provided',
+                'details': serializer.errors
+            },
+            'timestamp': timezone.now().isoformat()
+        }, status=status.HTTP_400_BAD_REQUEST)
+
+    @action(detail=False, methods=['get'])
+    def available_slots(self, request, doctor_id=None):
+        """Get available slots for a specific date"""
+        date = request.query_params.get('date')
+        clinic_id = request.query_params.get('clinic')
+        
+        if not date:
+            return Response({
+                'success': False,
+                'error': {
+                    'code': 'MISSING_DATE',
+                    'message': 'Date parameter is required'
+                },
+                'timestamp': timezone.now().isoformat()
+            }, status=status.HTTP_400_BAD_REQUEST)
+        
+        try:
+            from datetime import datetime
+            date_obj = datetime.strptime(date, '%Y-%m-%d').date()
+        except ValueError:
+            return Response({
+                'success': False,
+                'error': {
+                    'code': 'INVALID_DATE',
+                    'message': 'Invalid date format. Use YYYY-MM-DD'
+                },
+                'timestamp': timezone.now().isoformat()
+            }, status=status.HTTP_400_BAD_REQUEST)
+        
+        queryset = self.get_queryset().filter(
+            date=date_obj,
+            is_available=True,
+            is_booked=False
+        )
+        
+        if clinic_id:
+            queryset = queryset.filter(clinic_id=clinic_id)
+        
+        serializer = DoctorSlotSerializer(queryset, many=True)
+        return Response({
+            'success': True,
+            'data': serializer.data,
+            'message': f'Available slots for {date}',
+            'timestamp': timezone.now().isoformat()
+        }, status=status.HTTP_200_OK)
 
 
 class DoctorSearchView(APIView):
@@ -816,7 +896,28 @@ class SuperAdminDoctorDetailView(APIView):
             }, status=status.HTTP_404_NOT_FOUND)
     
     @extend_schema(
-        request=DoctorProfileSerializer,
+        request={
+            'name': OpenApiTypes.STR,
+            'phone': OpenApiTypes.STR,
+            'email': OpenApiTypes.STR,
+            'profile_picture': OpenApiTypes.BINARY,
+            'license_number': OpenApiTypes.STR,
+            'qualification': OpenApiTypes.STR,
+            'specialization': OpenApiTypes.STR,
+            'sub_specialization': OpenApiTypes.STR,
+            'consultation_fee': OpenApiTypes.NUMBER,
+            'online_consultation_fee': OpenApiTypes.NUMBER,
+            'experience_years': OpenApiTypes.INT,
+            'clinic_name': OpenApiTypes.STR,
+            'clinic_address': OpenApiTypes.STR,
+            'bio': OpenApiTypes.STR,
+            'languages_spoken': OpenApiTypes.STR,
+            'consultation_duration': OpenApiTypes.INT,
+            'is_online_consultation_available': OpenApiTypes.BOOL,
+            'is_active': OpenApiTypes.BOOL,
+            'date_of_birth': OpenApiTypes.STR,
+            'date_of_anniversary': OpenApiTypes.STR,
+        },
         responses={200: DoctorProfileSerializer},
         description="Update doctor profile (SuperAdmin only)"
     )
@@ -839,30 +940,77 @@ class SuperAdminDoctorDetailView(APIView):
                 user.email = request.data['email']
                 user_updated = True
             
+            # Handle profile picture update
+            if 'profile_picture' in request.FILES:
+                user.profile_picture = request.FILES['profile_picture']
+                user_updated = True
+            
             if user_updated:
                 user.save()
             
-            # Update doctor profile fields
-            serializer = DoctorProfileSerializer(doctor, data=request.data, partial=True)
+            # Helper function to parse JSON strings
+            def parse_json_field(value):
+                if isinstance(value, (list, dict)):
+                    return value
+                if isinstance(value, str):
+                    try:
+                        import json
+                        return json.loads(value)
+                    except (json.JSONDecodeError, ValueError):
+                        return []
+                return []
             
-            if serializer.is_valid():
-                serializer.save()
-                return Response({
-                    'success': True,
-                    'data': serializer.data,
-                    'message': 'Doctor profile updated successfully',
-                    'timestamp': timezone.now().isoformat()
-                }, status=status.HTTP_200_OK)
+            # Helper function to convert string boolean to actual boolean
+            def parse_boolean(value):
+                if isinstance(value, bool):
+                    return value
+                if isinstance(value, str):
+                    return value.lower() in ['true', '1', 'yes', 'on']
+                return bool(value)
             
+            # Update doctor profile fields manually
+            if 'license_number' in request.data:
+                doctor.license_number = request.data['license_number']
+            if 'qualification' in request.data:
+                doctor.qualification = request.data['qualification']
+            if 'specialization' in request.data:
+                doctor.specialization = request.data['specialization']
+            if 'sub_specialization' in request.data:
+                doctor.sub_specialization = request.data['sub_specialization']
+            if 'consultation_fee' in request.data:
+                doctor.consultation_fee = request.data['consultation_fee']
+            if 'online_consultation_fee' in request.data:
+                doctor.online_consultation_fee = request.data['online_consultation_fee']
+            if 'experience_years' in request.data:
+                doctor.experience_years = request.data['experience_years']
+            if 'clinic_name' in request.data:
+                doctor.clinic_name = request.data['clinic_name']
+            if 'clinic_address' in request.data:
+                doctor.clinic_address = request.data['clinic_address']
+            if 'bio' in request.data:
+                doctor.bio = request.data['bio']
+            if 'languages_spoken' in request.data:
+                doctor.languages_spoken = parse_json_field(request.data['languages_spoken'])
+            if 'consultation_duration' in request.data:
+                doctor.consultation_duration = request.data['consultation_duration']
+            if 'is_online_consultation_available' in request.data:
+                doctor.is_online_consultation_available = parse_boolean(request.data['is_online_consultation_available'])
+            if 'is_active' in request.data:
+                doctor.is_active = parse_boolean(request.data['is_active'])
+            if 'date_of_birth' in request.data:
+                doctor.date_of_birth = request.data['date_of_birth']
+            if 'date_of_anniversary' in request.data:
+                doctor.date_of_anniversary = request.data['date_of_anniversary']
+            
+            doctor.save()
+            
+            serializer = DoctorProfileSerializer(doctor)
             return Response({
-                'success': False,
-                'error': {
-                    'code': 'VALIDATION_ERROR',
-                    'message': 'Invalid data provided',
-                    'details': serializer.errors
-                },
+                'success': True,
+                'data': serializer.data,
+                'message': 'Doctor profile updated successfully',
                 'timestamp': timezone.now().isoformat()
-            }, status=status.HTTP_400_BAD_REQUEST)
+            }, status=status.HTTP_200_OK)
             
         except DoctorProfile.DoesNotExist:
             return Response({

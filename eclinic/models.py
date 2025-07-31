@@ -55,6 +55,12 @@ class Clinic(models.Model):
     is_active = models.BooleanField(default=True)
     is_verified = models.BooleanField(default=False)
     accepts_online_consultations = models.BooleanField(default=True)
+    
+    # Consultation Settings
+    consultation_duration = models.PositiveIntegerField(
+        default=15,
+        help_text="Duration of each consultation slot in minutes"
+    )
 
     # Admin (single admin per e-clinic)
     admin = models.OneToOneField(

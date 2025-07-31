@@ -200,8 +200,11 @@ class UpdateProfileSerializer(serializers.ModelSerializer):
     
     def validate_email(self, value):
         """Validate email uniqueness"""
-        if value and User.objects.filter(email=value).exclude(id=self.instance.id).exists():
-            raise serializers.ValidationError('Email already exists')
+        if value:
+            # Check if email exists for other users
+            existing_user = User.objects.filter(email=value).exclude(id=self.instance.id).first()
+            if existing_user:
+                raise serializers.ValidationError(f'Email already exists for user: {existing_user.name} (ID: {existing_user.id})')
         return value
 
 
