@@ -25,7 +25,7 @@ from .serializers import (
     ConsultationNoteSerializer, ConsultationNoteCreateSerializer,
     ConsultationSymptomSerializer, ConsultationSymptomCreateSerializer,
     ConsultationListSerializer, ConsultationSearchSerializer, ConsultationStatsSerializer,
-    ConsultationDetailSerializer
+    ConsultationDetailSerializer, ConsultationCreateDynamicSerializer
 )
 from doctors.serializers import DoctorSlotSerializer
 
@@ -143,7 +143,36 @@ class ConsultationViewSet(ModelViewSet):
                 'message': 'Consultation created successfully',
                 'timestamp': timezone.now().isoformat()
             }, status=status.HTTP_201_CREATED)
+        return Response({
+            'success': False,
+            'error': {
+                'code': 'VALIDATION_ERROR',
+                'message': 'Invalid data provided',
+                'details': serializer.errors
+            },
+            'timestamp': timezone.now().isoformat()
+        }, status=status.HTTP_400_BAD_REQUEST)
+
+    @extend_schema(
+        request=ConsultationCreateDynamicSerializer,
+        responses={201: ConsultationSerializer},
+        description="Create consultation with dynamic slots (no slot_id required)"
+    )
+    @action(detail=False, methods=['post'], url_path='create-dynamic')
+    def create_dynamic(self, request):
+        """Create consultation with dynamic slots (no slot_id required)"""
+        from .serializers import ConsultationCreateDynamicSerializer
         
+        serializer = ConsultationCreateDynamicSerializer(data=request.data)
+        if serializer.is_valid():
+            consultation = serializer.save()
+            response_serializer = ConsultationSerializer(consultation)
+            return Response({
+                'success': True,
+                'data': response_serializer.data,
+                'message': 'Consultation created successfully with dynamic slot',
+                'timestamp': timezone.now().isoformat()
+            }, status=status.HTTP_201_CREATED)
         return Response({
             'success': False,
             'error': {
@@ -239,6 +268,137 @@ class ConsultationViewSet(ModelViewSet):
             'message': f'Available slots for {date}',
             'timestamp': timezone.now().isoformat()
         }, status=status.HTTP_200_OK)
+
+    @action(detail=False, methods=['get'])
+    def calculate_available_slots(self, request):
+        """Calculate available slots dynamically based on doctor availability and clinic duration"""
+        doctor_id = request.query_params.get('doctor_id')
+        clinic_id = request.query_params.get('clinic_id')
+        date = request.query_params.get('date')
+        
+        if not doctor_id or not clinic_id or not date:
+            return Response({
+                'success': False,
+                'error': {
+                    'code': 'MISSING_PARAMETERS',
+                    'message': 'doctor_id, clinic_id, and date are required'
+                },
+                'timestamp': timezone.now().isoformat()
+            }, status=status.HTTP_400_BAD_REQUEST)
+        
+        try:
+            from datetime import datetime, timedelta
+            date_obj = datetime.strptime(date, '%Y-%m-%d').date()
+        except ValueError:
+            return Response({
+                'success': False,
+                'error': {
+                    'code': 'INVALID_DATE',
+                    'message': 'Invalid date format. Use YYYY-MM-DD'
+                },
+                'timestamp': timezone.now().isoformat()
+            }, status=status.HTTP_400_BAD_REQUEST)
+        
+        try:
+            # Get doctor and clinic
+            from doctors.models import DoctorSlot
+            from eclinic.models import Clinic
+            from authentication.models import User
+            
+            doctor = User.objects.get(id=doctor_id, role='doctor')
+            clinic = Clinic.objects.get(id=clinic_id)
+            
+            # Get doctor's availability for the date
+            available_slots = DoctorSlot.objects.filter(
+                doctor=doctor,
+                date=date_obj,
+                is_available=True,
+                is_booked=False
+            ).order_by('start_time')
+            
+            # Get clinic consultation duration
+            consultation_duration = clinic.consultation_duration  # in minutes
+            
+            calculated_slots = []
+            
+            for slot in available_slots:
+                # Convert slot times to datetime for calculation
+                slot_start = datetime.combine(date_obj, slot.start_time)
+                slot_end = datetime.combine(date_obj, slot.end_time)
+                
+                current_time = slot_start
+                
+                # Generate consultation slots within this availability period
+                while current_time < slot_end:
+                    slot_end_time = current_time + timedelta(minutes=consultation_duration)
+                    
+                    # Don't create slot if it would exceed the availability period
+                    if slot_end_time > slot_end:
+                        break
+                    
+                    # Check if this calculated slot overlaps with any existing consultation
+                    overlapping_consultation = Consultation.objects.filter(
+                        doctor=doctor,
+                        scheduled_date=date_obj,
+                        status__in=['scheduled', 'in_progress']
+                    ).filter(
+                        scheduled_time__lt=slot_end_time.time(),
+                        scheduled_time__gte=current_time.time()
+                    ).first()
+                    
+                    if not overlapping_consultation:
+                        calculated_slots.append({
+                            'start_time': current_time.time().strftime('%H:%M'),
+                            'end_time': slot_end_time.time().strftime('%H:%M'),
+                            'duration_minutes': consultation_duration,
+                            'clinic_name': clinic.name,
+                            'doctor_name': doctor.name,
+                            'is_available': True
+                        })
+                    
+                    # Move to next slot
+                    current_time = slot_end_time
+            
+            return Response({
+                'success': True,
+                'data': {
+                    'slots': calculated_slots,
+                    'clinic_duration': consultation_duration,
+                    'date': date,
+                    'doctor_name': doctor.name,
+                    'clinic_name': clinic.name
+                },
+                'message': f'Calculated {len(calculated_slots)} available slots for {date}',
+                'timestamp': timezone.now().isoformat()
+            }, status=status.HTTP_200_OK)
+            
+        except User.DoesNotExist:
+            return Response({
+                'success': False,
+                'error': {
+                    'code': 'DOCTOR_NOT_FOUND',
+                    'message': 'Doctor not found'
+                },
+                'timestamp': timezone.now().isoformat()
+            }, status=status.HTTP_404_NOT_FOUND)
+        except Clinic.DoesNotExist:
+            return Response({
+                'success': False,
+                'error': {
+                    'code': 'CLINIC_NOT_FOUND',
+                    'message': 'Clinic not found'
+                },
+                'timestamp': timezone.now().isoformat()
+            }, status=status.HTTP_404_NOT_FOUND)
+        except Exception as e:
+            return Response({
+                'success': False,
+                'error': {
+                    'code': 'CALCULATION_ERROR',
+                    'message': f'Error calculating slots: {str(e)}'
+                },
+                'timestamp': timezone.now().isoformat()
+            }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
     
     @action(detail=True, methods=['post'])
     def start(self, request, pk=None):

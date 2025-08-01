@@ -1,7 +1,7 @@
 from django.urls import path, include
 from rest_framework.routers import DefaultRouter
 from . import views
-from .views import DoctorSlotViewSet, SuperAdminDoctorManagementView, SuperAdminDoctorDetailView, DoctorStatusListView, DoctorStatusStatsView, DoctorStatusUpdateView, DoctorStatusDetailView
+from .views import DoctorSlotViewSet, SuperAdminDoctorManagementView, SuperAdminDoctorDetailView, DoctorStatusListView, DoctorStatusStatsView, DoctorStatusUpdateView, DoctorStatusDetailView, DoctorStatusOfflineView
 
 app_name = 'doctors'
 
@@ -10,6 +10,13 @@ router = DefaultRouter()
 router.register(r'', views.DoctorProfileViewSet, basename='doctor-profile')
 
 urlpatterns = [
+    # Doctor Status URLs (must come before router to avoid conflicts)
+    path('status/', DoctorStatusListView.as_view(), name='doctor-status-list'),
+    path('status/stats/', DoctorStatusStatsView.as_view(), name='doctor-status-stats'),
+    path('status/update/', DoctorStatusUpdateView.as_view(), name='doctor-status-update'),
+    path('status/offline/', DoctorStatusOfflineView.as_view(), name='doctor-status-offline'),
+    path('status/<int:doctor_id>/', DoctorStatusDetailView.as_view(), name='doctor-status-detail'),
+    
     # SuperAdmin Doctor Management
     path('superadmin/', SuperAdminDoctorManagementView.as_view(), name='superadmin-doctor-list'),
     path('superadmin/<str:doctor_id>/', SuperAdminDoctorDetailView.as_view(), name='superadmin-doctor-detail'),
@@ -77,11 +84,5 @@ urlpatterns += [
          name='doctor-slot-detail'),
 ]
 
-urlpatterns += [
-    # Doctor Status URLs
-    path('status/', DoctorStatusListView.as_view(), name='doctor-status-list'),
-    path('status/stats/', DoctorStatusStatsView.as_view(), name='doctor-status-stats'),
-    path('status/update/', DoctorStatusUpdateView.as_view(), name='doctor-status-update'),
-    path('status/<int:doctor_id>/', DoctorStatusDetailView.as_view(), name='doctor-status-detail'),
-]
+
 

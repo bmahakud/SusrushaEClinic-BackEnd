@@ -97,6 +97,71 @@ class ConsultationCreateSerializer(serializers.ModelSerializer):
         return data
 
 
+class ConsultationCreateDynamicSerializer(serializers.ModelSerializer):
+    """Serializer for creating consultation with dynamic slots (no slot_id required)"""
+    clinic_id = serializers.IntegerField(write_only=True, required=False)
+    
+    class Meta:
+        model = Consultation
+        fields = [
+            'patient', 'doctor', 'consultation_type', 'scheduled_date',
+            'scheduled_time', 'duration', 'chief_complaint', 'symptoms',
+            'consultation_fee', 'clinic_id'
+        ]
+    
+    def create(self, validated_data):
+        """Create consultation without requiring a pre-existing slot"""
+        # Extract clinic_id and set clinic
+        clinic_id = validated_data.pop('clinic_id', None)
+        if clinic_id:
+            from eclinic.models import Clinic
+            try:
+                clinic = Clinic.objects.get(id=clinic_id)
+                validated_data['clinic'] = clinic
+            except Clinic.DoesNotExist:
+                pass  # Continue without clinic if not found
+        
+        # Set default values
+        validated_data['status'] = 'scheduled'
+        validated_data['payment_status'] = 'pending'
+        
+        # Create the consultation
+        consultation = super().create(validated_data)
+        
+        return consultation
+
+    def validate(self, data):
+        """Validate consultation data for dynamic slots"""
+        # Check for overlapping consultations
+        from datetime import datetime, timedelta
+        from .models import Consultation
+        
+        scheduled_date = data.get('scheduled_date')
+        scheduled_time = data.get('scheduled_time')
+        duration = data.get('duration', 30)
+        doctor = data.get('doctor')
+        
+        if scheduled_date and scheduled_time and doctor:
+            # Calculate end time
+            start_datetime = datetime.combine(scheduled_date, scheduled_time)
+            end_datetime = start_datetime + timedelta(minutes=duration)
+            
+            # Check for overlapping consultations
+            overlapping = Consultation.objects.filter(
+                doctor=doctor,
+                scheduled_date=scheduled_date,
+                status__in=['scheduled', 'in_progress']
+            ).filter(
+                scheduled_time__lt=end_datetime.time(),
+                scheduled_time__gte=scheduled_time
+            ).exists()
+            
+            if overlapping:
+                raise serializers.ValidationError("This time slot conflicts with an existing consultation")
+        
+        return data
+
+
 class ConsultationUpdateSerializer(serializers.ModelSerializer):
     """Serializer for updating consultation"""
     

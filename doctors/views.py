@@ -1156,7 +1156,7 @@ class DoctorStatusDetailView(APIView):
 class DoctorStatusUpdateView(APIView):
     """View for doctors to update their own status"""
     
-    permission_classes = [permissions.IsAuthenticated, IsAdminOrSuperAdmin]
+    permission_classes = [permissions.IsAuthenticated]
     
     @extend_schema(
         summary="Update doctor status",
@@ -1266,6 +1266,51 @@ class DoctorStatusStatsView(APIView):
             return Response({
                 'status': 'error',
                 'message': f'Failed to retrieve statistics: {str(e)}'
+            }, status=500)
+
+
+class DoctorStatusOfflineView(APIView):
+    """View for doctors to mark themselves as offline"""
+    
+    permission_classes = [permissions.IsAuthenticated]
+    
+    @extend_schema(
+        summary="Mark doctor as offline",
+        description="Mark the current doctor as offline (useful when closing browser/tab)",
+        responses={200: dict},
+        tags=["Doctor Status"]
+    )
+    def post(self, request):
+        try:
+            # Get doctor's status
+            try:
+                status = DoctorStatus.objects.get(doctor=request.user.doctor)
+            except DoctorStatus.DoesNotExist:
+                return Response({
+                    'status': 'error',
+                    'message': 'Doctor status not found'
+                }, status=404)
+            
+            # Mark as offline
+            status.is_online = False
+            status.is_logged_in = False
+            status.current_status = 'offline'
+            status.last_logout = timezone.now()
+            status.last_activity = timezone.now()
+            status.save()
+            
+            # Broadcast the update
+            broadcast_doctor_status_update(status)
+            
+            return Response({
+                'status': 'success',
+                'message': 'Marked as offline successfully'
+            })
+                
+        except Exception as e:
+            return Response({
+                'status': 'error',
+                'message': f'Failed to mark as offline: {str(e)}'
             }, status=500)
 
 

@@ -45,19 +45,22 @@ class PatientProfileViewSet(ModelViewSet):
         """Override to handle patient profile ID lookup"""
         patient_id = self.kwargs.get('pk')
         try:
-            # First try to find patient profile by its own ID
-            patient_profile = PatientProfile.objects.get(id=patient_id)
+            # First try to find patient profile by its own ID (integer)
+            if patient_id.isdigit():
+                patient_profile = PatientProfile.objects.get(id=int(patient_id))
+                self.check_object_permissions(self.request, patient_profile)
+                return patient_profile
+        except (PatientProfile.DoesNotExist, ValueError):
+            pass
+        
+        try:
+            # If not found by ID, try to find by user ID (string)
+            patient_profile = PatientProfile.objects.get(user__id=patient_id)
             self.check_object_permissions(self.request, patient_profile)
             return patient_profile
         except PatientProfile.DoesNotExist:
-            try:
-                # If not found by ID, try to find by user ID
-                patient_profile = PatientProfile.objects.get(user__id=patient_id)
-                self.check_object_permissions(self.request, patient_profile)
-                return patient_profile
-            except PatientProfile.DoesNotExist:
-                from django.http import Http404
-                raise Http404("Patient profile not found")
+            from django.http import Http404
+            raise Http404("Patient profile not found")
     
     def get_serializer_class(self):
         """Return appropriate serializer based on action"""

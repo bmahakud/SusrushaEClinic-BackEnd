@@ -87,6 +87,37 @@ class VerifyOTPView(APIView):
             user.last_login = timezone.now()
             user.save(update_fields=['last_login'])
             
+            # Update doctor status if user is a doctor
+            if user.role == 'doctor':
+                try:
+                    from doctors.models import DoctorProfile, DoctorStatus
+                    doctor_profile = DoctorProfile.objects.get(user=user)
+                    doctor_status, created = DoctorStatus.objects.get_or_create(
+                        doctor=doctor_profile,
+                        defaults={
+                            'is_online': True,
+                            'is_logged_in': True,
+                            'is_available': True,
+                            'current_status': 'available',
+                            'last_login': timezone.now(),
+                            'last_activity': timezone.now(),
+                        }
+                    )
+                    
+                    if not created:
+                        # Update existing status
+                        doctor_status.is_online = True
+                        doctor_status.is_logged_in = True
+                        doctor_status.is_available = True
+                        doctor_status.current_status = 'available'
+                        doctor_status.last_login = timezone.now()
+                        doctor_status.last_activity = timezone.now()
+                        doctor_status.save()
+                        
+                except DoctorProfile.DoesNotExist:
+                    # Doctor profile doesn't exist yet, skip
+                    pass
+            
             # Prepare user data based on role
             user_data = {
                 'id': user.id,
@@ -256,6 +287,23 @@ class LogoutView(APIView):
                 user=request.user,
                 refresh_token=refresh_token
             ).update(is_active=False)
+            
+            # Update doctor status if user is a doctor
+            if request.user.role == 'doctor':
+                try:
+                    from doctors.models import DoctorProfile, DoctorStatus
+                    doctor_profile = DoctorProfile.objects.get(user=request.user)
+                    doctor_status = DoctorStatus.objects.get(doctor=doctor_profile)
+                    doctor_status.is_online = False
+                    doctor_status.is_logged_in = False
+                    doctor_status.current_status = 'offline'
+                    doctor_status.last_logout = timezone.now()
+                    doctor_status.last_activity = timezone.now()
+                    doctor_status.save()
+                        
+                except (DoctorProfile.DoesNotExist, DoctorStatus.DoesNotExist):
+                    # Doctor profile or status doesn't exist, skip
+                    pass
             
             return Response({
                 'success': True,

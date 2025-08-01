@@ -236,6 +236,11 @@ class DoctorScheduleCreateSerializer(serializers.ModelSerializer):
 class DoctorSlotSerializer(serializers.ModelSerializer):
     """Serializer for doctor slots (multiple slots per day)"""
     doctor = serializers.PrimaryKeyRelatedField(read_only=True)
+    clinic = serializers.PrimaryKeyRelatedField(
+        queryset=Clinic.objects.all(), 
+        required=False, 
+        allow_null=True
+    )
     clinic_name = serializers.CharField(source='clinic.name', read_only=True)
     
     class Meta:
@@ -246,14 +251,39 @@ class DoctorSlotSerializer(serializers.ModelSerializer):
         ]
         read_only_fields = ['id', 'doctor', 'created_at', 'updated_at']
 
+    def validate(self, data):
+        """Custom validation to handle clinic field and check for duplicates"""
+        doctor_id = self.context['view'].kwargs.get('doctor_id')
+        
+        # If clinic is not provided, set it to None for global availability
+        if 'clinic' not in data:
+            data['clinic'] = None
+        
+        # Check for existing slots with the same doctor, date, start_time, end_time, and clinic
+        existing_slot = DoctorSlot.objects.filter(
+            doctor_id=doctor_id,
+            clinic=data['clinic'],
+            date=data['date'],
+            start_time=data['start_time'],
+            end_time=data['end_time']
+        ).first()
+        
+        if existing_slot:
+            raise serializers.ValidationError(
+                f"A slot already exists for this doctor on {data['date']} from {data['start_time']} to {data['end_time']}"
+            )
+        
+        return data
+
     def create(self, validated_data):
         doctor_id = self.context['view'].kwargs.get('doctor_id')
         doctor = User.objects.get(id=doctor_id)
         validated_data['doctor'] = doctor
         
-        # If clinic is not provided, we need to handle this
+        # If clinic is not provided, we'll set it to None for global availability
+        # The model allows null=True, blank=True for clinic field
         if 'clinic' not in validated_data:
-            raise serializers.ValidationError("Clinic is required for creating slots")
+            validated_data['clinic'] = None
         
         return super().create(validated_data)
 

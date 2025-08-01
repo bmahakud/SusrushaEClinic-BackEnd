@@ -10,6 +10,15 @@ from .models import DoctorProfile, DoctorDocument, DoctorEducation, DoctorStatus
 import threading
 import boto3
 import os
+from django.db.models.signals import post_save
+from django.dispatch import receiver
+from django.utils import timezone
+from authentication.models import User
+from .models import DoctorStatus, DoctorProfile
+from channels.layers import get_channel_layer
+from asgiref.sync import async_to_sync
+import json
+
 
 def upload_doctor_education_async(education_id):
     """
@@ -225,14 +234,123 @@ def create_doctor_status(sender, instance, created, **kwargs):
             auto_away_threshold=15,
         )
 
+@receiver(post_save, sender=User)
+def update_doctor_status_on_login(sender, instance, created, **kwargs):
+    """
+    Update doctor status when user logs in (last_login is updated)
+    """
+    if not created and instance.role == 'doctor':
+        try:
+            # Check if this is a login event (last_login was updated)
+            if hasattr(instance, '_state') and instance._state.fields_cache.get('last_login'):
+                doctor_profile = DoctorProfile.objects.get(user=instance)
+                doctor_status, created = DoctorStatus.objects.get_or_create(
+                    doctor=doctor_profile,
+                    defaults={
+                        'is_online': True,
+                        'is_logged_in': True,
+                        'is_available': True,
+                        'current_status': 'available',
+                        'last_login': timezone.now(),
+                        'last_activity': timezone.now(),
+                    }
+                )
+                
+                if not created:
+                    # Update existing status
+                    doctor_status.is_online = True
+                    doctor_status.is_logged_in = True
+                    doctor_status.is_available = True
+                    doctor_status.current_status = 'available'
+                    doctor_status.last_login = timezone.now()
+                    doctor_status.last_activity = timezone.now()
+                    doctor_status.save()
+                
+                # Broadcast status update via WebSocket
+                broadcast_doctor_status_update(doctor_status)
+                
+        except DoctorProfile.DoesNotExist:
+            # Doctor profile doesn't exist yet, skip
+            pass
+
+
+def mark_doctor_offline_if_inactive():
+    """
+    Mark doctors as offline if they haven't been active for more than 5 minutes
+    This function can be called by a periodic task or cron job
+    """
+    from datetime import timedelta
+    inactive_threshold = timezone.now() - timedelta(minutes=5)
+    
+    inactive_doctors = DoctorStatus.objects.filter(
+        is_online=True,
+        last_activity__lt=inactive_threshold
+    )
+    
+    for doctor_status in inactive_doctors:
+        doctor_status.is_online = False
+        doctor_status.is_logged_in = False
+        doctor_status.current_status = 'offline'
+        doctor_status.save()
+        
+        # Broadcast the status change
+        broadcast_doctor_status_update(doctor_status)
+        
+        print(f"Marked {doctor_status.doctor.user.name} as offline due to inactivity")
+
+
+def broadcast_doctor_status_update(doctor_status):
+    """
+    Broadcast doctor status update to all connected clients via WebSocket
+    """
+    try:
+        channel_layer = get_channel_layer()
+        
+        # Prepare status data
+        status_data = {
+            'doctor_id': doctor_status.doctor.id,
+            'doctor_name': doctor_status.doctor.user.name,
+            'doctor_email': doctor_status.doctor.user.email,
+            'doctor_specialization': doctor_status.doctor.specialization,
+            'doctor_profile_picture': doctor_status.doctor.user.profile_picture.url if doctor_status.doctor.user.profile_picture else None,
+            'is_online': doctor_status.is_online,
+            'is_logged_in': doctor_status.is_logged_in,
+            'is_available': doctor_status.is_available,
+            'current_status': doctor_status.current_status,
+            'status_display': doctor_status.status_display,
+            'is_active': doctor_status.is_active,
+            'last_activity': doctor_status.last_activity.isoformat(),
+            'last_activity_formatted': doctor_status.last_activity.strftime('%H:%M'),
+            'last_login': doctor_status.last_login.isoformat() if doctor_status.last_login else None,
+            'last_login_formatted': doctor_status.last_login.strftime('%H:%M') if doctor_status.last_login else None,
+            'current_consultation': doctor_status.current_consultation.id if doctor_status.current_consultation else None,
+            'current_consultation_info': {
+                'id': doctor_status.current_consultation.id,
+                'patient_name': doctor_status.current_consultation.patient.user.name,
+                'scheduled_time': doctor_status.current_consultation.scheduled_time,
+            } if doctor_status.current_consultation else None,
+            'status_updated_at': doctor_status.status_updated_at.isoformat(),
+            'status_note': doctor_status.status_note,
+            'auto_away_threshold': doctor_status.auto_away_threshold,
+        }
+        
+        # Send to doctor status group
+        async_to_sync(channel_layer.group_send)(
+            "doctor_status_updates",
+            {
+                'type': 'status_update',
+                'data': status_data
+            }
+        )
+        
+    except Exception as e:
+        # Log error but don't fail the signal
+        print(f"Error broadcasting doctor status update: {e}")
+
+
 @receiver(post_save, sender=DoctorStatus)
-def broadcast_status_update(sender, instance, **kwargs):
-    """Broadcast status update when DoctorStatus is updated"""
-    from .views import broadcast_doctor_status_update
-    from .serializers import DoctorStatusSerializer
-    
-    # Serialize the updated status
-    serializer = DoctorStatusSerializer(instance)
-    
-    # Broadcast the update
-    broadcast_doctor_status_update(serializer.data) 
+def broadcast_status_change(sender, instance, created, **kwargs):
+    """
+    Broadcast status changes to WebSocket clients
+    """
+    broadcast_doctor_status_update(instance) 
