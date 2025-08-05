@@ -35,6 +35,15 @@ class SendOTPSerializer(serializers.Serializer):
         phone = validated_data['phone']
         purpose = validated_data['purpose']
 
+        # For login purpose, check if user exists
+        if purpose == 'login':
+            try:
+                user = User.objects.get(phone=phone)
+                if not user.is_active:
+                    raise serializers.ValidationError('Account is deactivated. Please contact support.')
+            except User.DoesNotExist:
+                raise serializers.ValidationError('No account found with this phone number. Please register first.')
+
         # Check if test mode is enabled
         test_mode = getattr(settings, 'OTP_TEST_MODE', False)
         test_otp = getattr(settings, 'OTP_TEST_CODE', '999999')
@@ -126,15 +135,15 @@ class VerifyOTPSerializer(serializers.Serializer):
 
         # Handle test OTP bypass
         if test_mode and otp_code == test_otp:
-            user, created = User.objects.get_or_create(
-                phone=phone,
-                defaults={
-                    'name': f'User {phone[-4:]}',
-                    'role': 'patient'
-                }
-            )
+            try:
+                user = User.objects.get(phone=phone)
+                if not user.is_active:
+                    raise serializers.ValidationError('Account is deactivated. Please contact support.')
+            except User.DoesNotExist:
+                raise serializers.ValidationError('No account found with this phone number. Please register first.')
+            
             attrs['user'] = user
-            attrs['is_new_user'] = created
+            attrs['is_new_user'] = False
             return attrs
 
         # Hash the provided OTP
@@ -155,17 +164,16 @@ class VerifyOTPSerializer(serializers.Serializer):
         otp.is_used = True
         otp.save()
 
-        # Get or create user
-        user, created = User.objects.get_or_create(
-            phone=phone,
-            defaults={
-                'name': f'User {phone[-4:]}',  # Default name
-                'role': 'patient'  # Default role
-            }
-        )
+        # Get user (don't create for login)
+        try:
+            user = User.objects.get(phone=phone)
+            if not user.is_active:
+                raise serializers.ValidationError('Account is deactivated. Please contact support.')
+        except User.DoesNotExist:
+            raise serializers.ValidationError('No account found with this phone number. Please register first.')
 
         attrs['user'] = user
-        attrs['is_new_user'] = created
+        attrs['is_new_user'] = False
         return attrs
 
 

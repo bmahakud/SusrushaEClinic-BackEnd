@@ -1,12 +1,28 @@
 from rest_framework import serializers
 from django.utils import timezone
 from django.db import models
+from django.core.exceptions import ValidationError
 from authentication.models import User
 from .models import (
     Clinic, ClinicService, ClinicInventory,
     ClinicAppointment, ClinicReview, ClinicDocument
 )
 from utils.signed_urls import get_signed_media_url
+
+
+def validate_image_file(value):
+    """Custom validator for image files"""
+    # Check file size (20MB = 20 * 1024 * 1024 bytes)
+    max_size = 20 * 1024 * 1024  # 20MB
+    if value.size > max_size:
+        raise ValidationError(f'Image file size must be no more than 20MB. Current size: {value.size / (1024 * 1024):.2f}MB')
+    
+    # Check file type
+    allowed_types = ['image/jpeg', 'image/jpg', 'image/png', 'image/webp']
+    if hasattr(value, 'content_type') and value.content_type not in allowed_types:
+        raise ValidationError('Only JPEG, PNG, and WebP image files are allowed.')
+    
+    return value
 
 
 class ClinicSerializer(serializers.ModelSerializer):
@@ -51,6 +67,7 @@ class ClinicSerializer(serializers.ModelSerializer):
 
 class ClinicCreateSerializer(serializers.ModelSerializer):
     admin = serializers.PrimaryKeyRelatedField(queryset=User.objects.filter(role='admin'), required=True)
+    cover_image = serializers.ImageField(validators=[validate_image_file], required=False, allow_null=True)
 
     class Meta:
         model = Clinic

@@ -1,6 +1,5 @@
 from rest_framework import serializers
 from .models import Prescription, PrescriptionMedication, PrescriptionVitalSigns
-from consultations.serializers import ConsultationSerializer
 
 # Simple User Serializer for prescription system
 class UserSerializer(serializers.Serializer):
@@ -65,7 +64,9 @@ class PrescriptionSerializer(serializers.ModelSerializer):
     
     doctor = UserSerializer(read_only=True)
     patient = UserSerializer(read_only=True)
-    consultation = ConsultationSerializer(read_only=True)
+    consultation_id = serializers.CharField(source='consultation.id', read_only=True)
+    consultation_date = serializers.DateField(source='consultation.scheduled_date', read_only=True)
+    consultation_time = serializers.TimeField(source='consultation.scheduled_time', read_only=True)
     medications = PrescriptionMedicationSerializer(many=True, read_only=True)
     vital_signs = PrescriptionVitalSignsSerializer(read_only=True)
     
@@ -77,7 +78,7 @@ class PrescriptionSerializer(serializers.ModelSerializer):
     class Meta:
         model = Prescription
         fields = [
-            'id', 'consultation', 'doctor', 'patient', 'patient_age', 'patient_gender',
+            'id', 'consultation_id', 'consultation_date', 'consultation_time', 'doctor', 'patient', 'patient_age', 'patient_gender',
             'issued_date', 'issued_time',
             'pulse', 'blood_pressure_systolic', 'blood_pressure_diastolic', 'blood_pressure_display',
             'temperature', 'weight', 'height',

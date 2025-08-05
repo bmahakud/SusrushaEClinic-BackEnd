@@ -36,6 +36,7 @@ python-decouple==3.8
 phonenumbers==8.13.52
 qrcode==8.0
 reportlab==4.2.5
+requests==2.31.0
 
 channels==4.0.0
 channels-redis==4.1.0

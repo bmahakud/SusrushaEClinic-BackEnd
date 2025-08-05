@@ -1,11 +1,12 @@
 from rest_framework import serializers
+from django.utils import timezone
 from authentication.models import User
 from patients.models import PatientProfile
 from doctors.models import DoctorProfile
 from .models import (
     Consultation, ConsultationSymptom, ConsultationDiagnosis,
     ConsultationVitalSigns, ConsultationAttachment, ConsultationNote,
-    ConsultationReschedule
+    ConsultationReschedule, ConsultationReceipt
 )
 
 class ConsultationSerializer(serializers.ModelSerializer):
@@ -73,6 +74,29 @@ class ConsultationCreateSerializer(serializers.ModelSerializer):
         slot.booked_consultation = consultation
         slot.save()
         
+        # Send WhatsApp notification to doctor
+        try:
+            from .services import WhatsAppNotificationService
+            whatsapp_service = WhatsAppNotificationService()
+            
+            # Send notification to doctor
+            doctor_notification_sent = whatsapp_service.send_doctor_appointment_notification(consultation)
+            if doctor_notification_sent:
+                print(f"✅ WhatsApp notification sent to doctor: {consultation.doctor.name}")
+            else:
+                print(f"❌ Failed to send WhatsApp notification to doctor: {consultation.doctor.name}")
+            
+            # Send notification to patient
+            patient_notification_sent = whatsapp_service.send_patient_appointment_confirmation(consultation)
+            if patient_notification_sent:
+                print(f"✅ WhatsApp notification sent to patient: {consultation.patient.name}")
+            else:
+                print(f"❌ Failed to send WhatsApp notification to patient: {consultation.patient.name}")
+                
+        except Exception as e:
+            print(f"❌ Error in WhatsApp notification service: {str(e)}")
+            # Don't fail the consultation creation if notification fails
+        
         return consultation
 
     def validate(self, data):
@@ -99,18 +123,22 @@ class ConsultationCreateSerializer(serializers.ModelSerializer):
 
 class ConsultationCreateDynamicSerializer(serializers.ModelSerializer):
     """Serializer for creating consultation with dynamic slots (no slot_id required)"""
-    clinic_id = serializers.IntegerField(write_only=True, required=False)
+    clinic_id = serializers.CharField(write_only=True, required=False)
+    payment_method = serializers.CharField(write_only=True, required=False)
+    payment_status = serializers.CharField(write_only=True, required=False)
     
     class Meta:
         model = Consultation
         fields = [
             'patient', 'doctor', 'consultation_type', 'scheduled_date',
             'scheduled_time', 'duration', 'chief_complaint', 'symptoms',
-            'consultation_fee', 'clinic_id'
+            'consultation_fee', 'clinic_id', 'payment_method', 'payment_status'
         ]
     
     def create(self, validated_data):
         """Create consultation without requiring a pre-existing slot"""
+        print(f"🔍 ConsultationCreateDynamicSerializer.create called with: {validated_data}")
+        
         # Extract clinic_id and set clinic
         clinic_id = validated_data.pop('clinic_id', None)
         if clinic_id:
@@ -118,20 +146,137 @@ class ConsultationCreateDynamicSerializer(serializers.ModelSerializer):
             try:
                 clinic = Clinic.objects.get(id=clinic_id)
                 validated_data['clinic'] = clinic
+                print(f"🔍 Found clinic: {clinic}")
             except Clinic.DoesNotExist:
+                print(f"🔍 Clinic not found for ID: {clinic_id}")
                 pass  # Continue without clinic if not found
+        
+        # Handle payment fields
+        payment_method = validated_data.pop('payment_method', 'online')
+        payment_status = validated_data.pop('payment_status', 'pending')
         
         # Set default values
         validated_data['status'] = 'scheduled'
-        validated_data['payment_status'] = 'pending'
+        validated_data['payment_status'] = payment_status
+        validated_data['payment_method'] = payment_method
+        validated_data['is_paid'] = payment_status == 'paid'
+        
+        print(f"🔍 Final validated_data: {validated_data}")
         
         # Create the consultation
         consultation = super().create(validated_data)
+        
+        # Create corresponding Payment record
+        try:
+            from payments.models import Payment
+            import uuid
+            
+            # Generate payment ID
+            payment_id = f"PAY{uuid.uuid4().hex[:12].upper()}"
+            
+            # Create payment record
+            payment = Payment.objects.create(
+                id=payment_id,
+                patient=consultation.patient,
+                doctor=consultation.doctor,
+                consultation=consultation,
+                amount=consultation.consultation_fee,
+                currency='INR',
+                payment_type='consultation',
+                description=f"Consultation fee for {consultation.consultation_type}",
+                payment_method=payment_method,
+                status='completed' if payment_status == 'paid' else 'pending',
+                net_amount=consultation.consultation_fee,
+                platform_fee=0,
+                gateway_fee=0,
+                tax_amount=0,
+                discount_amount=0,
+                processed_at=timezone.now() if payment_status == 'paid' else None,
+                completed_at=timezone.now() if payment_status == 'paid' else None,
+                receipt_number=f"RCP{payment_id}"
+            )
+            
+            print(f"🔍 Created payment record: {payment}")
+            
+        except Exception as e:
+            print(f"🔍 Error creating payment record: {e}")
+            # Don't fail the consultation creation if payment creation fails
+        
+        print(f"🔍 Created consultation: {consultation}")
+        
+        # Update or create slot to mark it as booked
+        try:
+            from doctors.models import DoctorSlot
+            from datetime import datetime, timedelta
+            
+            # Find existing slot for this time period
+            consultation_start = datetime.combine(consultation.scheduled_date, consultation.scheduled_time)
+            consultation_end = consultation_start + timedelta(minutes=consultation.duration)
+            
+            # Look for existing slots that overlap with this consultation time
+            overlapping_slots = DoctorSlot.objects.filter(
+                doctor=consultation.doctor,
+                date=consultation.scheduled_date,
+                start_time__lt=consultation_end.time(),
+                end_time__gt=consultation_start.time(),
+                is_available=True,
+                is_booked=False
+            )
+            
+            if overlapping_slots.exists():
+                # Mark existing slot as booked
+                slot = overlapping_slots.first()
+                slot.is_booked = True
+                slot.booked_consultation = consultation.id
+                slot.save()
+                print(f"🔍 Marked existing slot {slot.id} as booked for consultation {consultation.id}")
+            else:
+                # Create a new slot record for this consultation
+                new_slot = DoctorSlot.objects.create(
+                    doctor=consultation.doctor,
+                    clinic=consultation.clinic if hasattr(consultation, 'clinic') and consultation.clinic else None,
+                    date=consultation.scheduled_date,
+                    start_time=consultation.scheduled_time,
+                    end_time=(consultation_start + timedelta(minutes=consultation.duration)).time(),
+                    is_available=False,
+                    is_booked=True,
+                    booked_consultation=consultation.id
+                )
+                print(f"🔍 Created new slot {new_slot.id} for consultation {consultation.id}")
+                
+        except Exception as e:
+            print(f"🔍 Error updating slot status: {e}")
+            # Don't fail the consultation creation if slot update fails
+        
+        # Send WhatsApp notification to doctor
+        try:
+            from .services import WhatsAppNotificationService
+            whatsapp_service = WhatsAppNotificationService()
+            
+            # Send notification to doctor
+            doctor_notification_sent = whatsapp_service.send_doctor_appointment_notification(consultation)
+            if doctor_notification_sent:
+                print(f"✅ WhatsApp notification sent to doctor: {consultation.doctor.name}")
+            else:
+                print(f"❌ Failed to send WhatsApp notification to doctor: {consultation.doctor.name}")
+            
+            # Send notification to patient
+            patient_notification_sent = whatsapp_service.send_patient_appointment_confirmation(consultation)
+            if patient_notification_sent:
+                print(f"✅ WhatsApp notification sent to patient: {consultation.patient.name}")
+            else:
+                print(f"❌ Failed to send WhatsApp notification to patient: {consultation.patient.name}")
+                
+        except Exception as e:
+            print(f"❌ Error in WhatsApp notification service: {str(e)}")
+            # Don't fail the consultation creation if notification fails
         
         return consultation
 
     def validate(self, data):
         """Validate consultation data for dynamic slots"""
+        print(f"🔍 ConsultationCreateDynamicSerializer.validate called with: {data}")
+        
         # Check for overlapping consultations
         from datetime import datetime, timedelta
         from .models import Consultation
@@ -159,6 +304,7 @@ class ConsultationCreateDynamicSerializer(serializers.ModelSerializer):
             if overlapping:
                 raise serializers.ValidationError("This time slot conflicts with an existing consultation")
         
+        print(f"🔍 ConsultationCreateDynamicSerializer.validate returning: {data}")
         return data
 
 
@@ -408,19 +554,30 @@ class ConsultationStatsSerializer(serializers.Serializer):
 class ConsultationDetailSerializer(serializers.ModelSerializer):
     """Detailed serializer for consultation with related data"""
     patient_name = serializers.CharField(source='patient.name', read_only=True)
+    patient_phone = serializers.CharField(source='patient.phone', read_only=True)
+    patient_email = serializers.CharField(source='patient.email', read_only=True)
+    patient_age = serializers.SerializerMethodField(read_only=True)
+    patient_gender = serializers.SerializerMethodField(read_only=True)
+    
     doctor_name = serializers.CharField(source='doctor.name', read_only=True)
+    doctor_phone = serializers.CharField(source='doctor.phone', read_only=True)
+    doctor_email = serializers.CharField(source='doctor.email', read_only=True)
+    doctor_specialty = serializers.SerializerMethodField(read_only=True)
     doctor_meeting_link = serializers.SerializerMethodField(read_only=True)
+    
     recorded_symptoms = ConsultationSymptomSerializer(many=True, read_only=True)
     diagnoses = ConsultationDiagnosisSerializer(many=True, read_only=True)
     vital_signs = ConsultationVitalSignsSerializer(many=True, read_only=True)
     attachments = ConsultationAttachmentSerializer(many=True, read_only=True)
     notes = ConsultationNoteSerializer(many=True, read_only=True)
     reschedules = ConsultationRescheduleSerializer(many=True, read_only=True)
+    prescription_data = serializers.SerializerMethodField(read_only=True)
     
     class Meta:
         model = Consultation
         fields = [
-            'id', 'patient', 'doctor', 'patient_name', 'doctor_name',
+            'id', 'patient', 'doctor', 'patient_name', 'patient_phone', 'patient_email', 'patient_age', 'patient_gender',
+            'doctor_name', 'doctor_phone', 'doctor_email', 'doctor_specialty',
             'consultation_type', 'scheduled_date', 'scheduled_time', 'duration',
             'chief_complaint', 'symptoms', 'status',
             'actual_start_time', 'actual_end_time', 'consultation_fee',
@@ -429,15 +586,116 @@ class ConsultationDetailSerializer(serializers.ModelSerializer):
             'doctor_notes', 'patient_notes', 'prescription_given',
             'cancelled_by', 'cancellation_reason', 'cancelled_at',
             'recorded_symptoms', 'diagnoses', 'vital_signs', 'attachments', 'notes', 'reschedules',
+            'prescription_data',
             'created_at', 'updated_at',
             'doctor_meeting_link',
         ]
         read_only_fields = ['id', 'created_at', 'updated_at']
-
-    def get_doctor_meeting_link(self, obj):
-        if hasattr(obj, 'doctor') and hasattr(obj.doctor, 'doctor_profile') and hasattr(obj.doctor.doctor_profile, 'meeting_link'):
-            return obj.doctor.doctor_profile.meeting_link
+    
+    def get_patient_age(self, obj):
+        """Get patient age from date of birth"""
+        if obj.patient.date_of_birth:
+            from datetime import date
+            today = date.today()
+            return today.year - obj.patient.date_of_birth.year - (
+                (today.month, today.day) < (obj.patient.date_of_birth.month, obj.patient.date_of_birth.day)
+            )
         return None
+    
+    def get_patient_gender(self, obj):
+        """Get patient gender"""
+        if obj.patient.gender:
+            return obj.patient.gender
+        return None
+    
+    def get_doctor_specialty(self, obj):
+        """Get doctor specialty"""
+        if hasattr(obj.doctor, 'doctor_profile') and obj.doctor.doctor_profile.specialization:
+            return obj.doctor.doctor_profile.specialization
+        return "General Medicine"
+    
+    def get_doctor_meeting_link(self, obj):
+        """Generate meeting link for doctor"""
+        if hasattr(obj.doctor, 'doctor_profile') and obj.doctor.doctor_profile.meeting_link:
+            return obj.doctor.doctor_profile.meeting_link
+        return f"https://meet.google.com/{obj.id}-{obj.doctor.id}"
+    
+    def get_prescription_data(self, obj):
+        """Get prescription data for the consultation"""
+        try:
+            # Lazy import to avoid circular import
+            from prescriptions.models import Prescription
+            from prescriptions.serializers import PrescriptionMedicationSerializer
+            
+            prescription = Prescription.objects.filter(consultation=obj).first()
+            if prescription:
+                return {
+                    'id': prescription.id,
+                    'issued_date': prescription.issued_date,
+                    'issued_time': prescription.issued_time,
+                    'primary_diagnosis': prescription.primary_diagnosis,
+                    'secondary_diagnosis': prescription.secondary_diagnosis,
+                    'general_instructions': prescription.general_instructions,
+                    'diet_instructions': prescription.diet_instructions,
+                    'lifestyle_advice': prescription.lifestyle_advice,
+                    'next_visit': prescription.next_visit,
+                    'follow_up_notes': prescription.follow_up_notes,
+                    'is_finalized': prescription.is_finalized,
+                    'medications': PrescriptionMedicationSerializer(
+                        prescription.prescriptionmedication_set.all().order_by('order'), 
+                        many=True
+                    ).data
+                }
+            return None
+        except Exception as e:
+            print(f"Error getting prescription data: {e}")
+            return None
+
+
+class ConsultationReceiptSerializer(serializers.ModelSerializer):
+    """Serializer for consultation receipts"""
+    consultation_id = serializers.CharField(source='consultation.id', read_only=True)
+    patient_name = serializers.CharField(source='consultation.patient.name', read_only=True)
+    doctor_name = serializers.CharField(source='consultation.doctor.name', read_only=True)
+    clinic_name = serializers.CharField(source='consultation.clinic.name', read_only=True)
+    issued_by_name = serializers.CharField(source='issued_by.name', read_only=True)
+    formatted_amount = serializers.CharField(read_only=True)
+    receipt_data = serializers.JSONField(read_only=True)
+    
+    class Meta:
+        model = ConsultationReceipt
+        fields = [
+            'id', 'receipt_number', 'consultation_id', 'patient_name', 'doctor_name', 
+            'clinic_name', 'amount', 'formatted_amount', 'payment_method', 'payment_status',
+            'issued_by', 'issued_by_name', 'issued_at', 'receipt_data'
+        ]
+        read_only_fields = ['id', 'receipt_number', 'issued_at', 'receipt_data']
+
+
+class ConsultationReceiptCreateSerializer(serializers.ModelSerializer):
+    """Serializer for creating consultation receipts"""
+    
+    class Meta:
+        model = ConsultationReceipt
+        fields = ['consultation', 'amount', 'payment_method', 'payment_status', 'issued_by']
+    
+    def create(self, validated_data):
+        """Create receipt with auto-generated receipt number"""
+        consultation = validated_data['consultation']
+        
+        # Set receipt content
+        validated_data['receipt_content'] = {
+            'consultation_id': consultation.id,
+            'patient_name': consultation.patient.name,
+            'doctor_name': consultation.doctor.name,
+            'clinic_name': consultation.clinic.name if consultation.clinic else 'N/A',
+            'consultation_date': consultation.scheduled_date.isoformat(),
+            'consultation_time': consultation.scheduled_time.isoformat(),
+            'consultation_type': consultation.consultation_type,
+            'chief_complaint': consultation.chief_complaint,
+        }
+        
+        return super().create(validated_data)
 
 
 

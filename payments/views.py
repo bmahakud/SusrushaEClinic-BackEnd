@@ -428,14 +428,26 @@ class PaymentStatsView(APIView):
                 'timestamp': timezone.now().isoformat()
             }, status=status.HTTP_403_FORBIDDEN)
         
+        # Build base queryset with clinic filtering
+        payments = Payment.objects.all()
+        
+        # Filter by clinic if user is an admin (not superadmin)
+        if request.user.role == 'admin':
+            # Get clinics where this user is admin
+            from eclinic.models import Clinic
+            user_clinics = Clinic.objects.filter(admin=request.user)
+            if user_clinics.exists():
+                clinic_ids = [clinic.id for clinic in user_clinics]
+                payments = payments.filter(consultation__clinic__id__in=clinic_ids)
+        
         # Calculate statistics
-        total_payments = Payment.objects.count()
-        successful_payments = Payment.objects.filter(status='completed').count()
-        failed_payments = Payment.objects.filter(status='failed').count()
-        pending_payments = Payment.objects.filter(status='pending').count()
+        total_payments = payments.count()
+        successful_payments = payments.filter(status='completed').count()
+        failed_payments = payments.filter(status='failed').count()
+        pending_payments = payments.filter(status='pending').count()
         
         # Revenue calculations
-        total_revenue = Payment.objects.filter(status='completed').aggregate(
+        total_revenue = payments.filter(status='completed').aggregate(
             total=Sum('amount')
         )['total'] or 0
         
@@ -445,7 +457,7 @@ class PaymentStatsView(APIView):
         
         # Payment method distribution
         payment_method_distribution = dict(
-            Payment.objects.values('payment_method').annotate(
+            payments.values('payment_method').annotate(
                 count=Count('payment_method')
             ).values_list('payment_method', 'count')
         )
@@ -456,7 +468,7 @@ class PaymentStatsView(APIView):
             month_start = timezone.now().replace(day=1) - timedelta(days=30*i)
             month_end = month_start + timedelta(days=30)
             
-            month_revenue = Payment.objects.filter(
+            month_revenue = payments.filter(
                 status='completed',
                 processed_at__gte=month_start,
                 processed_at__lt=month_end
@@ -468,7 +480,7 @@ class PaymentStatsView(APIView):
             })
         
         # Average transaction amount
-        avg_amount = Payment.objects.filter(status='completed').aggregate(
+        avg_amount = payments.filter(status='completed').aggregate(
             avg=Avg('amount')
         )['avg'] or 0
         
@@ -629,77 +641,398 @@ class PaymentWebhookView(APIView):
 class PaymentInitiateView(APIView):
     permission_classes = [permissions.IsAuthenticated]
 
+    @extend_schema(
+        request=PaymentProcessSerializer,
+        responses={200: PaymentSerializer},
+        description="Initiate payment for consultation"
+    )
     def post(self, request):
-        consultation_id = request.data.get('consultation_id')
-        amount = request.data.get('amount')
-        # Switch environment automatically: sandbox if DEBUG, production if not
-        if getattr(settings, 'DEBUG', True):
-            env = 'sandbox'
+        """Initiate payment for consultation"""
+        serializer = PaymentProcessSerializer(data=request.data)
+        if serializer.is_valid():
+            # Payment initiation logic
+            pass
+        return Response({
+            'success': False,
+            'error': 'Payment initiation not implemented yet'
+        }, status=status.HTTP_501_NOT_IMPLEMENTED)
+
+
+class PaymentTrackingView(APIView):
+    """Comprehensive payment tracking and analytics"""
+    permission_classes = [permissions.IsAuthenticated]
+    
+    def get(self, request):
+        """Get comprehensive payment tracking data"""
+        # Check permissions
+        if request.user.role not in ['admin', 'superadmin']:
+            return Response({
+                'success': False,
+                'error': 'Insufficient permissions'
+            }, status=status.HTTP_403_FORBIDDEN)
+        
+        # Get date range from query params
+        start_date = request.query_params.get('start_date')
+        end_date = request.query_params.get('end_date')
+        
+        # Base queryset - filter by user's clinic if admin
+        payments = Payment.objects.all()
+        
+        # Filter by clinic if user is an admin (not superadmin)
+        if request.user.role == 'admin':
+            # Get clinics where this user is admin
+            from eclinic.models import Clinic
+            user_clinics = Clinic.objects.filter(admin=request.user)
+            if user_clinics.exists():
+                clinic_ids = [clinic.id for clinic in user_clinics]
+                payments = payments.filter(consultation__clinic__id__in=clinic_ids)
+        
+        # Apply date filters if provided
+        if start_date:
+            payments = payments.filter(created_at__date__gte=start_date)
+        if end_date:
+            payments = payments.filter(created_at__date__lte=end_date)
+        
+        # Calculate comprehensive statistics
+        total_payments = payments.count()
+        successful_payments = payments.filter(status='completed').count()
+        failed_payments = payments.filter(status='failed').count()
+        pending_payments = payments.filter(status='pending').count()
+        
+        # Revenue calculations
+        total_revenue = payments.filter(status='completed').aggregate(
+            total=Sum('amount')
+        )['total'] or 0
+        
+        total_refunds = PaymentRefund.objects.filter(status='completed').aggregate(
+            total=Sum('refund_amount')
+        )['total'] or 0
+        
+        # Payment method breakdown
+        payment_method_breakdown = list(
+            payments.values('payment_method').annotate(
+                count=Count('payment_method'),
+                total_amount=Sum('amount')
+            ).order_by('-total_amount')
+        )
+        
+        # Daily revenue for the last 30 days
+        daily_revenue = []
+        for i in range(30):
+            date = timezone.now().date() - timedelta(days=i)
+            day_revenue = payments.filter(
+                status='completed',
+                created_at__date=date
+            ).aggregate(total=Sum('amount'))['total'] or 0
+            
+            daily_revenue.append({
+                'date': date.isoformat(),
+                'revenue': float(day_revenue),
+                'count': payments.filter(
+                    status='completed',
+                    created_at__date=date
+                ).count()
+            })
+        
+        # Top revenue sources (doctors)
+        top_revenue_sources = list(
+            payments.filter(
+                status='completed',
+                consultation__isnull=False
+            ).values('consultation__doctor__name').annotate(
+                total_revenue=Sum('amount'),
+                consultation_count=Count('consultation')
+            ).order_by('-total_revenue')[:10]
+        )
+        
+        # Recent payments
+        recent_payments = payments.order_by('-created_at')[:10]
+        
+        tracking_data = {
+            'overview': {
+                'total_payments': total_payments,
+                'successful_payments': successful_payments,
+                'failed_payments': failed_payments,
+                'pending_payments': pending_payments,
+                'total_revenue': float(total_revenue),
+                'total_refunds': float(total_refunds),
+                'net_revenue': float(total_revenue - total_refunds),
+                'success_rate': (successful_payments / total_payments * 100) if total_payments > 0 else 0
+            },
+            'payment_method_breakdown': payment_method_breakdown,
+            'daily_revenue': daily_revenue,
+            'top_revenue_sources': top_revenue_sources,
+            'recent_payments': PaymentListSerializer(recent_payments, many=True).data
+        }
+        
+        return Response({
+            'success': True,
+            'data': tracking_data,
+            'message': 'Payment tracking data retrieved successfully',
+            'timestamp': timezone.now().isoformat()
+        }, status=status.HTTP_200_OK)
+
+
+class PaymentReceiptView(APIView):
+    """Handle payment receipt generation and retrieval"""
+    permission_classes = [permissions.IsAuthenticated]
+    
+    def get(self, request, payment_id):
+        """Get payment receipt"""
+        try:
+            payment = Payment.objects.get(id=payment_id)
+            
+            # Check permissions
+            user = request.user
+            if user.role == 'patient' and payment.patient != user:
+                return Response({
+                    'success': False,
+                    'error': 'You can only view your own payment receipts'
+                }, status=status.HTTP_403_FORBIDDEN)
+            
+            if user.role == 'doctor' and payment.consultation and payment.consultation.doctor != user:
+                return Response({
+                    'success': False,
+                    'error': 'You can only view receipts for your consultations'
+                }, status=status.HTTP_403_FORBIDDEN)
+            
+            # Generate receipt data
+            receipt_data = {
+                'payment_id': payment.id,
+                'receipt_number': payment.receipt_number or f"RCP{payment.id}",
+                'patient_name': payment.patient.name,
+                'doctor_name': payment.doctor.name if payment.doctor else 'N/A',
+                'consultation_id': payment.consultation.id if payment.consultation else 'N/A',
+                'amount': payment.amount,
+                'currency': payment.currency,
+                'payment_method': payment.payment_method,
+                'status': payment.status,
+                'description': payment.description,
+                'created_at': payment.created_at,
+                'completed_at': payment.completed_at,
+                'gateway_transaction_id': payment.gateway_transaction_id,
+                'clinic_name': payment.consultation.clinic.name if payment.consultation and payment.consultation.clinic else 'N/A'
+            }
+            
+            return Response({
+                'success': True,
+                'data': receipt_data,
+                'message': 'Payment receipt retrieved successfully',
+                'timestamp': timezone.now().isoformat()
+            }, status=status.HTTP_200_OK)
+            
+        except Payment.DoesNotExist:
+            return Response({
+                'success': False,
+                'error': 'Payment not found'
+            }, status=status.HTTP_404_NOT_FOUND)
+
+
+class PaymentHistoryView(APIView):
+    """Get detailed payment history with filters"""
+    permission_classes = [permissions.IsAuthenticated]
+    
+    @extend_schema(
+        parameters=[
+            OpenApiParameter(name='start_date', type=OpenApiTypes.DATE, description='Start date for filtering'),
+            OpenApiParameter(name='end_date', type=OpenApiTypes.DATE, description='End date for filtering'),
+            OpenApiParameter(name='status', type=OpenApiTypes.STR, description='Payment status filter'),
+            OpenApiParameter(name='payment_method', type=OpenApiTypes.STR, description='Payment method filter'),
+            OpenApiParameter(name='min_amount', type=OpenApiTypes.DECIMAL, description='Minimum amount filter'),
+            OpenApiParameter(name='max_amount', type=OpenApiTypes.DECIMAL, description='Maximum amount filter'),
+        ],
+        responses={200: PaymentListSerializer},
+        description="Get filtered payment history"
+    )
+    def get(self, request):
+        """Get filtered payment history"""
+        # Check permissions
+        if request.user.role not in ['admin', 'superadmin']:
+            return Response({
+                'success': False,
+                'error': 'Insufficient permissions'
+            }, status=status.HTTP_403_FORBIDDEN)
+        
+        # Get filters from query params
+        start_date = request.query_params.get('start_date')
+        end_date = request.query_params.get('end_date')
+        status_filter = request.query_params.get('status')
+        payment_method = request.query_params.get('payment_method')
+        min_amount = request.query_params.get('min_amount')
+        max_amount = request.query_params.get('max_amount')
+        
+        # Build queryset
+        payments = Payment.objects.select_related('patient', 'doctor', 'consultation').all()
+        
+        # Filter by clinic if user is an admin (not superadmin)
+        if request.user.role == 'admin':
+            # Get clinics where this user is admin
+            from eclinic.models import Clinic
+            user_clinics = Clinic.objects.filter(admin=request.user)
+            if user_clinics.exists():
+                clinic_ids = [clinic.id for clinic in user_clinics]
+                payments = payments.filter(consultation__clinic__id__in=clinic_ids)
+        
+        # Apply filters
+        if start_date:
+            payments = payments.filter(created_at__date__gte=start_date)
+        if end_date:
+            payments = payments.filter(created_at__date__lte=end_date)
+        if status_filter:
+            payments = payments.filter(status=status_filter)
+        if payment_method:
+            payments = payments.filter(payment_method=payment_method)
+        if min_amount:
+            payments = payments.filter(amount__gte=min_amount)
+        if max_amount:
+            payments = payments.filter(amount__lte=max_amount)
+        
+        # Pagination
+        paginator = PaymentPagination()
+        paginated_payments = paginator.paginate_queryset(payments, request)
+        
+        serializer = PaymentListSerializer(paginated_payments, many=True)
+        
+        # Return the data in the expected format
+        return Response({
+            'success': True,
+            'data': {
+                'count': paginator.page.paginator.count,
+                'next': paginator.get_next_link(),
+                'previous': paginator.get_previous_link(),
+                'results': serializer.data
+            },
+            'message': 'Payment history retrieved successfully',
+            'timestamp': timezone.now().isoformat()
+        }, status=status.HTTP_200_OK)
+
+
+class PaymentAnalyticsView(APIView):
+    """Advanced payment analytics and insights"""
+    permission_classes = [permissions.IsAuthenticated]
+    
+    @extend_schema(
+        responses={200: PaymentStatsSerializer},
+        description="Get advanced payment analytics"
+    )
+    def get(self, request):
+        """Get advanced payment analytics"""
+        # Check permissions
+        if request.user.role not in ['admin', 'superadmin']:
+            return Response({
+                'success': False,
+                'error': 'Insufficient permissions'
+            }, status=status.HTTP_403_FORBIDDEN)
+        
+        # Get period from query params
+        period = request.query_params.get('period', 'month')
+        
+        # Calculate period dates
+        today = timezone.now().date()
+        if period == 'week':
+            start_date = today - timedelta(days=7)
+        elif period == 'month':
+            start_date = today - timedelta(days=30)
+        elif period == 'quarter':
+            start_date = today - timedelta(days=90)
+        elif period == 'year':
+            start_date = today - timedelta(days=365)
         else:
-            env = 'prod'
-        if not consultation_id or not amount:
-            return Response({'success': False, 'error': 'consultation_id and amount are required.'}, status=400)
-
-        if env == 'prod':
-            merchant_id = getattr(settings, 'PHONEPE_PROD_MERCHANT_ID', 'YOUR_PROD_MERCHANT_ID')
-            salt_key = getattr(settings, 'PHONEPE_PROD_SALT_KEY', 'YOUR_PROD_SALT_KEY')
-            salt_index = getattr(settings, 'PHONEPE_PROD_SALT_INDEX', '1')
-            phonepe_url = getattr(settings, 'PHONEPE_PROD_PAY_URL', 'https://api.phonepe.com/apis/hermes/pg/v1/pay')
+            start_date = today - timedelta(days=30)
+        
+        # Filter payments by period
+        payments = Payment.objects.filter(created_at__date__gte=start_date)
+        
+        # Filter by clinic if user is an admin (not superadmin)
+        if request.user.role == 'admin':
+            # Get clinics where this user is admin
+            from eclinic.models import Clinic
+            user_clinics = Clinic.objects.filter(admin=request.user)
+            if user_clinics.exists():
+                clinic_ids = [clinic.id for clinic in user_clinics]
+                payments = payments.filter(consultation__clinic__id__in=clinic_ids)
+        
+        # Revenue trends
+        revenue_trends = []
+        if period == 'week':
+            for i in range(7):
+                date = today - timedelta(days=i)
+                revenue = payments.filter(
+                    status='completed',
+                    created_at__date=date
+                ).aggregate(total=Sum('amount'))['total'] or 0
+                revenue_trends.append({
+                    'date': date.isoformat(),
+                    'revenue': float(revenue)
+                })
         else:
-            merchant_id = getattr(settings, 'PHONEPE_MERCHANT_ID', 'YOUR_MERCHANT_ID')
-            salt_key = getattr(settings, 'PHONEPE_SALT_KEY', 'YOUR_SALT_KEY')
-            salt_index = getattr(settings, 'PHONEPE_SALT_INDEX', '1')
-            phonepe_url = getattr(settings, 'PHONEPE_SANDBOX_PAY_URL', 'https://api-preprod.phonepe.com/apis/pg-sandbox/pg/v1/pay')
-
-        print(f"[PhonePe DEBUG] Using environment: {env}")
-        print("[PhonePe DEBUG] merchant_id:", merchant_id)
-        print("[PhonePe DEBUG] salt_key:", salt_key)
-        print("[PhonePe DEBUG] salt_index:", salt_index)
-        print("[PhonePe DEBUG] phonepe_url:", phonepe_url)
-
-        # Prepare payload
-        payload = {
-            "merchantId": merchant_id,
-            "merchantTransactionId": f"CONSULT_{consultation_id}",
-            "merchantUserId": str(request.user.id),
-            "amount": int(float(amount) * 100),  # in paise
-            "redirectUrl": "https://yourdomain.com/payment/success/",  # TODO: update to your frontend success URL
-            "redirectMode": "REDIRECT",
-            "callbackUrl": "https://yourdomain.com/api/payments/webhook/",  # TODO: update to your backend webhook
-            "paymentInstrument": {
-                "type": "PAY_PAGE"
+            # Monthly breakdown for longer periods
+            current_date = start_date
+            while current_date <= today:
+                month_start = current_date.replace(day=1)
+                month_end = (month_start + timedelta(days=32)).replace(day=1) - timedelta(days=1)
+                
+                revenue = payments.filter(
+                    status='completed',
+                    created_at__date__range=[month_start, month_end]
+                ).aggregate(total=Sum('amount'))['total'] or 0
+                
+                revenue_trends.append({
+                    'period': month_start.strftime('%Y-%m'),
+                    'revenue': float(revenue)
+                })
+                
+                current_date = (month_start + timedelta(days=32)).replace(day=1)
+        
+        # Payment method performance
+        method_performance = list(
+            payments.values('payment_method').annotate(
+                total_amount=Sum('amount'),
+                count=Count('id'),
+                success_rate=Count('id', filter=Q(status='completed')) * 100.0 / Count('id')
+            ).order_by('-total_amount')
+        )
+        
+        # Top performing doctors
+        top_doctors = list(
+            payments.filter(
+                status='completed',
+                consultation__isnull=False
+            ).values('consultation__doctor__name').annotate(
+                total_revenue=Sum('amount'),
+                consultation_count=Count('consultation', distinct=True),
+                avg_amount=Avg('amount')
+            ).order_by('-total_revenue')[:10]
+        )
+        
+        # Payment failure analysis
+        failure_analysis = list(
+            payments.filter(status='failed').values('payment_method').annotate(
+                failure_count=Count('id'),
+                total_attempts=Count('id')
+            ).order_by('-failure_count')
+        )
+        
+        analytics_data = {
+            'period': period,
+            'revenue_trends': revenue_trends,
+            'method_performance': method_performance,
+            'top_doctors': top_doctors,
+            'failure_analysis': failure_analysis,
+            'summary': {
+                'total_revenue': float(payments.filter(status='completed').aggregate(total=Sum('amount'))['total'] or 0),
+                'total_transactions': payments.count(),
+                'success_rate': (payments.filter(status='completed').count() / payments.count() * 100) if payments.count() > 0 else 0,
+                'avg_transaction_value': float(payments.filter(status='completed').aggregate(avg=Avg('amount'))['avg'] or 0)
             }
         }
-        payload_str = json.dumps(payload, separators=(',', ':'))
-        print("[PhonePe DEBUG] payload_str:", payload_str)
-
-        # Generate X-VERIFY header
-        base64_payload = base64.b64encode(payload_str.encode()).decode()
-        string_to_sign = base64_payload + "/pg/v1/pay" + salt_key
-        x_verify = hmac.new(salt_key.encode(), string_to_sign.encode(), hashlib.sha256).hexdigest() + "###" + salt_index
-
-        # Make request to PhonePe
-        headers = {
-            "Content-Type": "application/json",
-            "X-VERIFY": x_verify,
-            "X-MERCHANT-ID": merchant_id,
-        }
-        print("[PhonePe DEBUG] headers:", headers)
-
-        try:
-            response = requests.post(phonepe_url, data=payload_str, headers=headers)
-            print("[PhonePe DEBUG] PhonePe status code:", response.status_code)
-            print("[PhonePe DEBUG] PhonePe response:", response.text)
-            phonepe_data = response.json()
-        except Exception as e:
-            print("[PhonePe DEBUG] Exception:", str(e))
-            return Response({"success": False, "error": f"PhonePe request failed: {str(e)}"}, status=500)
-
-        if phonepe_data.get("success"):
-            payment_url = phonepe_data["data"]["instrumentResponse"]["redirectInfo"]["url"]
-            return Response({"success": True, "payment_url": payment_url})
-        else:
-            return Response({"success": False, "error": phonepe_data.get("message", "PhonePe error")}, status=400)
+        
+        return Response({
+            'success': True,
+            'data': analytics_data,
+            'message': 'Payment analytics retrieved successfully',
+            'timestamp': timezone.now().isoformat()
+        }, status=status.HTTP_200_OK)
 
 
 

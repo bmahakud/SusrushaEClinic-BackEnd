@@ -165,6 +165,39 @@ class DoctorListSerializer(serializers.ModelSerializer):
         return None
 
 
+class PublicDoctorListSerializer(serializers.ModelSerializer):
+    """Serializer for public doctor listing (no sensitive information)"""
+    name = serializers.CharField(source='user.name', read_only=True)
+    experience_years = serializers.ReadOnlyField()
+    profile_picture = serializers.SerializerMethodField()
+    consultation_types = serializers.SerializerMethodField()
+    
+    class Meta:
+        model = DoctorProfile
+        fields = [
+            'id', 'name', 'profile_picture', 'specialization', 'sub_specialization',
+            'experience_years', 'consultation_fee', 'online_consultation_fee',
+            'languages_spoken', 'bio', 'rating', 'total_reviews', 
+            'clinic_name', 'clinic_address', 'consultation_types',
+            'is_online_consultation_available', 'consultation_duration'
+        ]
+    
+    def get_profile_picture(self, obj):
+        """Generate signed URL for profile picture"""
+        if obj.user.profile_picture:
+            return get_signed_media_url(str(obj.user.profile_picture))
+        return None
+    
+    def get_consultation_types(self, obj):
+        """Get available consultation types"""
+        types = []
+        if obj.clinic_address:  # Has physical clinic
+            types.append('in-person')
+        if obj.is_online_consultation_available:
+            types.append('video')
+        return types
+
+
 class DoctorSearchSerializer(serializers.Serializer):
     """Serializer for doctor search"""
     query = serializers.CharField(max_length=200, required=False)

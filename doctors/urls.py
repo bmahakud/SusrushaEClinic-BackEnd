@@ -10,6 +10,13 @@ router = DefaultRouter()
 router.register(r'', views.DoctorProfileViewSet, basename='doctor-profile')
 
 urlpatterns = [
+    # Test endpoints (development only)
+    path('test-detail/<str:doctor_id>/', views.test_doctor_detail, name='test-doctor-detail'),
+    path('test-superadmin-detail/<str:doctor_id>/', views.test_superadmin_doctor_detail, name='test-superadmin-doctor-detail'),
+    
+    # Public Doctor Listing (no authentication required)
+    path('public/', views.PublicDoctorListView.as_view(), name='public-doctor-list'),
+    
     # Doctor Status URLs (must come before router to avoid conflicts)
     path('status/', DoctorStatusListView.as_view(), name='doctor-status-list'),
     path('status/stats/', DoctorStatusStatsView.as_view(), name='doctor-status-stats'),

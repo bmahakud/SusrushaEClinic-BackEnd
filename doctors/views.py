@@ -27,7 +27,8 @@ from .serializers import (
     DoctorDocumentSerializer, DoctorScheduleSerializer,
     DoctorReviewSerializer, DoctorListSerializer, DoctorSearchSerializer,
     DoctorStatsSerializer, DoctorScheduleCreateSerializer, DoctorSlotSerializer,
-    DoctorSlotGenerationSerializer, DoctorStatusSerializer, DoctorStatusUpdateSerializer, DoctorStatusListSerializer
+    DoctorSlotGenerationSerializer, DoctorStatusSerializer, DoctorStatusUpdateSerializer, DoctorStatusListSerializer,
+    PublicDoctorListSerializer
 )
 
 
@@ -689,6 +690,9 @@ class SuperAdminDoctorManagementView(APIView):
                 Q(specialization__icontains=search)
             )
         
+        # Order the queryset to fix pagination warning
+        queryset = queryset.order_by('-created_at', 'id')
+        
         # Pagination
         paginator = DoctorPagination()
         page = paginator.paginate_queryset(queryset, request)
@@ -868,10 +872,15 @@ class SuperAdminDoctorDetailView(APIView):
     permission_classes = [permissions.IsAuthenticated]
     
     def get_permissions(self):
-        """Only superadmin can access"""
-        if not self.request.user.is_authenticated or getattr(self.request.user, 'role', None) != 'superadmin':
+        """Allow admin and superadmin to access"""
+        if not self.request.user.is_authenticated:
             return [permissions.IsAdminUser()]
-        return super().get_permissions()
+        
+        user_role = getattr(self.request.user, 'role', None)
+        if user_role in ['admin', 'superadmin']:
+            return [permissions.IsAuthenticated()]
+        else:
+            return [permissions.IsAdminUser()]
     
     @extend_schema(
         responses={200: DoctorProfileSerializer},
@@ -880,7 +889,8 @@ class SuperAdminDoctorDetailView(APIView):
     def get(self, request, doctor_id):
         """Get doctor details by ID"""
         try:
-            doctor = DoctorProfile.objects.select_related('user').get(id=doctor_id)
+            # doctor_id is actually the User ID (e.g., DOC018)
+            doctor = DoctorProfile.objects.select_related('user').get(user__id=doctor_id)
             serializer = DoctorProfileSerializer(doctor)
             return Response({
                 'success': True,
@@ -893,7 +903,7 @@ class SuperAdminDoctorDetailView(APIView):
                 'success': False,
                 'error': {
                     'code': 'DOCTOR_NOT_FOUND',
-                    'message': 'Doctor not found'
+                    'message': f'Doctor with User ID {doctor_id} not found'
                 },
                 'timestamp': timezone.now().isoformat()
             }, status=status.HTTP_404_NOT_FOUND)
@@ -927,7 +937,8 @@ class SuperAdminDoctorDetailView(APIView):
     def put(self, request, doctor_id):
         """Update doctor profile"""
         try:
-            doctor = DoctorProfile.objects.select_related('user').get(id=doctor_id)
+            # doctor_id is actually the User ID (e.g., DOC018)
+            doctor = DoctorProfile.objects.select_related('user').get(user__id=doctor_id)
             
             # Update user fields if present in request
             user = doctor.user
@@ -1032,7 +1043,8 @@ class SuperAdminDoctorDetailView(APIView):
     def delete(self, request, doctor_id):
         """Delete doctor"""
         try:
-            doctor = DoctorProfile.objects.get(id=doctor_id)
+            # doctor_id is actually the User ID (e.g., DOC018)
+            doctor = DoctorProfile.objects.get(user__id=doctor_id)
             user = doctor.user
             
             # Hard delete - permanently remove the doctor profile and user account
@@ -1055,7 +1067,7 @@ class SuperAdminDoctorDetailView(APIView):
                 'success': False,
                 'error': {
                     'code': 'DOCTOR_NOT_FOUND',
-                    'message': 'Doctor not found'
+                    'message': f'Doctor with User ID {doctor_id} not found'
                 },
                 'timestamp': timezone.now().isoformat()
             }, status=status.HTTP_404_NOT_FOUND)
@@ -1346,4 +1358,199 @@ def broadcast_consultation_update(consultation_data):
             "data": consultation_data
         }
     )
+
+
+@api_view(['GET'])
+@permission_classes([])  # No authentication required for testing
+def test_superadmin_doctor_detail(request, doctor_id):
+    """Test endpoint to view superadmin doctor details without authentication (development only)"""
+    try:
+        # doctor_id is actually the User ID (e.g., DOC018)
+        doctor = DoctorProfile.objects.get(user__id=doctor_id)
+        serializer = DoctorProfileSerializer(doctor)
+        return Response({
+            'success': True,
+            'data': serializer.data,
+            'message': 'SuperAdmin doctor details retrieved successfully (test endpoint)',
+            'timestamp': timezone.now().isoformat()
+        }, status=status.HTTP_200_OK)
+    except DoctorProfile.DoesNotExist:
+        return Response({
+            'success': False,
+            'error': {
+                'code': 'DOCTOR_NOT_FOUND',
+                'message': f'Doctor with User ID {doctor_id} not found'
+            },
+            'timestamp': timezone.now().isoformat()
+        }, status=status.HTTP_404_NOT_FOUND)
+    except Exception as e:
+        return Response({
+            'success': False,
+            'error': {
+                'code': 'ERROR',
+                'message': str(e)
+            },
+            'timestamp': timezone.now().isoformat()
+        }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+
+@api_view(['GET'])
+@permission_classes([])  # No authentication required for testing
+def test_doctor_detail(request, doctor_id):
+    """Test endpoint to view doctor details without authentication (development only)"""
+    try:
+        # doctor_id is actually the User ID (e.g., DOC018)
+        doctor = DoctorProfile.objects.get(user__id=doctor_id)
+        serializer = DoctorProfileSerializer(doctor)
+        return Response({
+            'success': True,
+            'data': serializer.data,
+            'message': 'Doctor profile retrieved successfully (test endpoint)',
+            'timestamp': timezone.now().isoformat()
+        }, status=status.HTTP_200_OK)
+    except DoctorProfile.DoesNotExist:
+        return Response({
+            'success': False,
+            'error': {
+                'code': 'DOCTOR_NOT_FOUND',
+                'message': f'Doctor with User ID {doctor_id} not found'
+            },
+            'timestamp': timezone.now().isoformat()
+        }, status=status.HTTP_404_NOT_FOUND)
+    except Exception as e:
+        return Response({
+            'success': False,
+            'error': {
+                'code': 'ERROR',
+                'message': str(e)
+            },
+            'timestamp': timezone.now().isoformat()
+        }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+
+class PublicDoctorListView(APIView):
+    """Public endpoint for listing doctors (no authentication required)"""
+    permission_classes = [permissions.AllowAny]
+    pagination_class = DoctorPagination
+    
+    @extend_schema(
+        parameters=[
+            OpenApiParameter('search', OpenApiTypes.STR, description='Search by doctor name or specialization'),
+            OpenApiParameter('specialization', OpenApiTypes.STR, description='Filter by specialization'),
+            OpenApiParameter('pincode', OpenApiTypes.STR, description='Filter by pincode'),
+            OpenApiParameter('city', OpenApiTypes.STR, description='Filter by city'),
+            OpenApiParameter('min_experience', OpenApiTypes.INT, description='Minimum experience years'),
+            OpenApiParameter('max_experience', OpenApiTypes.INT, description='Maximum experience years'),
+            OpenApiParameter('min_fee', OpenApiTypes.NUMBER, description='Minimum consultation fee'),
+            OpenApiParameter('max_fee', OpenApiTypes.NUMBER, description='Maximum consultation fee'),
+            OpenApiParameter('rating_min', OpenApiTypes.NUMBER, description='Minimum rating'),
+            OpenApiParameter('consultation_type', OpenApiTypes.STR, description='Consultation type: in_person, online, both'),
+            OpenApiParameter('page', OpenApiTypes.INT, description='Page number'),
+            OpenApiParameter('page_size', OpenApiTypes.INT, description='Items per page'),
+            OpenApiParameter('ordering', OpenApiTypes.STR, description='Order by: rating, experience, fee, name'),
+        ],
+        responses={200: PublicDoctorListSerializer(many=True)},
+        description="Public endpoint to list verified and active doctors with filtering"
+    )
+    def get(self, request):
+        """List public doctors with filtering and pagination"""
+        try:
+            # Base queryset - only verified and active doctors
+            queryset = DoctorProfile.objects.select_related('user').filter(
+                is_verified=True, 
+                is_active=True,
+                is_accepting_patients=True
+            )
+            
+            # Apply filters
+            search = request.query_params.get('search', '')
+            if search:
+                queryset = queryset.filter(
+                    Q(user__name__icontains=search) |
+                    Q(specialization__icontains=search) |
+                    Q(qualification__icontains=search)
+                )
+            
+            specialization = request.query_params.get('specialization', '')
+            if specialization:
+                queryset = queryset.filter(specialization__icontains=specialization)
+            
+            pincode = request.query_params.get('pincode', '')
+            if pincode:
+                queryset = queryset.filter(clinic_address__icontains=pincode)
+            
+            city = request.query_params.get('city', '')
+            if city:
+                queryset = queryset.filter(clinic_address__icontains=city)
+            
+            min_experience = request.query_params.get('min_experience')
+            if min_experience:
+                queryset = queryset.filter(experience_years__gte=int(min_experience))
+            
+            max_experience = request.query_params.get('max_experience')
+            if max_experience:
+                queryset = queryset.filter(experience_years__lte=int(max_experience))
+            
+            min_fee = request.query_params.get('min_fee')
+            if min_fee:
+                queryset = queryset.filter(consultation_fee__gte=float(min_fee))
+            
+            max_fee = request.query_params.get('max_fee')
+            if max_fee:
+                queryset = queryset.filter(consultation_fee__lte=float(max_fee))
+            
+            rating_min = request.query_params.get('rating_min')
+            if rating_min:
+                queryset = queryset.filter(rating__gte=float(rating_min))
+            
+            consultation_type = request.query_params.get('consultation_type')
+            if consultation_type:
+                if consultation_type == 'online':
+                    queryset = queryset.filter(is_online_consultation_available=True)
+                elif consultation_type == 'in_person':
+                    queryset = queryset.filter(is_online_consultation_available=False)
+                # 'both' means no filter applied
+            
+            # Apply ordering
+            ordering = request.query_params.get('ordering', 'rating')
+            if ordering == 'rating':
+                queryset = queryset.order_by('-rating', '-total_reviews')
+            elif ordering == 'experience':
+                queryset = queryset.order_by('-experience_years')
+            elif ordering == 'fee':
+                queryset = queryset.order_by('consultation_fee')
+            elif ordering == 'name':
+                queryset = queryset.order_by('user__name')
+            else:
+                queryset = queryset.order_by('-rating', '-total_reviews')
+            
+            # Apply pagination
+            paginator = self.pagination_class()
+            page = paginator.paginate_queryset(queryset, request)
+            
+            if page is not None:
+                serializer = PublicDoctorListSerializer(page, many=True)
+                return paginator.get_paginated_response({
+                    'success': True,
+                    'data': serializer.data,
+                    'message': 'Doctors retrieved successfully',
+                    'timestamp': timezone.now().isoformat()
+                })
+            
+            # If no pagination
+            serializer = PublicDoctorListSerializer(queryset, many=True)
+            return Response({
+                'success': True,
+                'data': serializer.data,
+                'message': 'Doctors retrieved successfully',
+                'timestamp': timezone.now().isoformat()
+            })
+            
+        except Exception as e:
+            return Response({
+                'success': False,
+                'error': {
+                    'code': 'FETCH_ERROR',
+                    'message': f'Failed to fetch doctors: {str(e)}'
+                },
+                'timestamp': timezone.now().isoformat()
+            }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
 

@@ -16,6 +16,12 @@ urlpatterns = [
     path('search/', views.PaymentSearchView.as_view(), name='payment-search'),
     path('stats/', views.PaymentStatsView.as_view(), name='payment-stats'),
     
+    # Payment tracking and analytics
+    path('tracking/', views.PaymentTrackingView.as_view(), name='payment-tracking'),
+    path('history/', views.PaymentHistoryView.as_view(), name='payment-history'),
+    path('analytics/', views.PaymentAnalyticsView.as_view(), name='payment-analytics'),
+    path('receipt/<str:payment_id>/', views.PaymentReceiptView.as_view(), name='payment-receipt'),
+    
     # Discount validation
     path('validate-discount/', views.DiscountValidationView.as_view(), name='validate-discount'),
     

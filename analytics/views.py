@@ -19,6 +19,7 @@ from consultations.models import Consultation
 from prescriptions.models import Prescription
 from payments.models import Payment
 from eclinic.models import Clinic
+from doctors.models import DoctorProfile
 from .models import (
     UserAnalytics, ConsultationAnalytics, RevenueAnalytics,
     DoctorPerformanceAnalytics, ClinicPerformanceAnalytics, SystemPerformanceMetrics,
@@ -1278,6 +1279,568 @@ class SuperAdminDoctorAnalyticsView(APIView):
             'message': 'Doctor analytics retrieved successfully',
             'timestamp': timezone.now().isoformat()
         }, status=status.HTTP_200_OK)
+
+
+class DetailedAnalyticsView(APIView):
+    """Get detailed analytics for admin dashboard"""
+    permission_classes = [permissions.IsAuthenticated]
+    
+    @extend_schema(
+        responses={200: dict},
+        description="Get detailed analytics for admin dashboard including overview, clinic performance, doctor performance, payment analytics, and patient analytics"
+    )
+    def get(self, request):
+        """Get detailed analytics data"""
+        # Check permissions
+        if request.user.role not in ['admin', 'superadmin']:
+            return Response({
+                'success': False,
+                'error': {
+                    'code': 'PERMISSION_DENIED',
+                    'message': 'Insufficient permissions'
+                },
+                'timestamp': timezone.now().isoformat()
+            }, status=status.HTTP_403_FORBIDDEN)
+        
+        try:
+            today = timezone.now().date()
+            this_month_start = today.replace(day=1)
+            last_month_start = (this_month_start - timedelta(days=1)).replace(day=1)
+            
+            # Get assigned clinic for admin users
+            assigned_clinic = None
+            if request.user.role == 'admin':
+                try:
+                    assigned_clinic = Clinic.objects.get(admin=request.user)
+                except Clinic.DoesNotExist:
+                    return Response({
+                        'success': False,
+                        'error': {
+                            'code': 'NO_CLINIC_ASSIGNED',
+                            'message': 'You have not been assigned to any e-clinic'
+                        },
+                        'timestamp': timezone.now().isoformat()
+                    }, status=status.HTTP_400_BAD_REQUEST)
+            
+            # Overview statistics (filtered by clinic for admin)
+            overview = self._get_overview_stats(today, assigned_clinic)
+            
+            # Today's performance (filtered by clinic for admin)
+            today_stats = self._get_today_stats(today, assigned_clinic)
+            
+            # This month's performance (filtered by clinic for admin)
+            this_month_stats = self._get_monthly_stats(this_month_start, last_month_start, assigned_clinic)
+            
+            # Clinic performance (only assigned clinic for admin)
+            clinic_performance = self._get_clinic_performance(assigned_clinic)
+            
+            # Consultation analytics (filtered by clinic for admin)
+            consultation_analytics = self._get_consultation_analytics(assigned_clinic)
+            
+            # Payment analytics (filtered by clinic for admin)
+            payment_analytics = self._get_payment_analytics(assigned_clinic)
+            
+            # Doctor performance (filtered by clinic for admin)
+            doctor_performance = self._get_doctor_performance(assigned_clinic)
+            
+            # Patient analytics (filtered by clinic for admin)
+            patient_analytics = self._get_patient_analytics(assigned_clinic)
+            
+            analytics_data = {
+                'overview': overview,
+                'today': today_stats,
+                'this_month': this_month_stats,
+                'clinic_performance': clinic_performance,
+                'consultation_analytics': consultation_analytics,
+                'payment_analytics': payment_analytics,
+                'doctor_performance': doctor_performance,
+                'patient_analytics': patient_analytics
+            }
+            
+            return Response({
+                'success': True,
+                'data': analytics_data,
+                'message': 'Detailed analytics retrieved successfully',
+                'timestamp': timezone.now().isoformat()
+            }, status=status.HTTP_200_OK)
+            
+        except Exception as e:
+            return Response({
+                'success': False,
+                'error': {
+                    'code': 'ANALYTICS_ERROR',
+                    'message': str(e)
+                },
+                'timestamp': timezone.now().isoformat()
+            }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+    
+    def _get_overview_stats(self, today, assigned_clinic=None):
+        """Get overview statistics"""
+        if assigned_clinic:
+            # Admin user - show only their clinic data
+            total_clinics = 1
+            active_clinics = 1 if assigned_clinic.is_active else 0
+            total_doctors = User.objects.filter(
+                role='doctor', 
+                slots__clinic=assigned_clinic
+            ).distinct().count()
+            active_doctors = User.objects.filter(
+                role='doctor', 
+                is_active=True,
+                slots__clinic=assigned_clinic
+            ).distinct().count()
+            total_patients = User.objects.filter(
+                role='patient',
+                patient_consultations__clinic=assigned_clinic
+            ).distinct().count()
+            total_consultations = Consultation.objects.filter(clinic=assigned_clinic).count()
+            total_revenue = Payment.objects.filter(
+                consultation__clinic=assigned_clinic, 
+                status='completed'
+            ).aggregate(total=Sum('amount'))['total'] or 0
+        else:
+            # SuperAdmin - show all data
+            total_clinics = Clinic.objects.count()
+            active_clinics = Clinic.objects.filter(is_active=True).count()
+            total_doctors = User.objects.filter(role='doctor').count()
+            active_doctors = User.objects.filter(role='doctor', is_active=True).count()
+            total_patients = User.objects.filter(role='patient').count()
+            total_consultations = Consultation.objects.count()
+            total_revenue = Payment.objects.filter(status='completed').aggregate(
+                total=Sum('amount')
+            )['total'] or 0
+        
+        # Calculate success rate
+        if assigned_clinic:
+            completed_consultations = Consultation.objects.filter(
+                clinic=assigned_clinic, 
+                status='completed'
+            ).count()
+        else:
+            completed_consultations = Consultation.objects.filter(status='completed').count()
+        
+        success_rate = (completed_consultations / total_consultations * 100) if total_consultations > 0 else 0
+        
+        return {
+            'total_clinics': total_clinics,
+            'active_clinics': active_clinics,
+            'total_doctors': total_doctors,
+            'active_doctors': active_doctors,
+            'total_patients': total_patients,
+            'total_consultations': total_consultations,
+            'total_revenue': float(total_revenue),
+            'success_rate': round(success_rate, 1)
+        }
+    
+    def _get_today_stats(self, today, assigned_clinic=None):
+        """Get today's statistics"""
+        if assigned_clinic:
+            # Admin user - show only their clinic data
+            consultations_today = Consultation.objects.filter(
+                clinic=assigned_clinic, created_at__date=today
+            ).count()
+            completed_consultations = Consultation.objects.filter(
+                clinic=assigned_clinic, created_at__date=today, status='completed'
+            ).count()
+            cancelled_consultations = Consultation.objects.filter(
+                clinic=assigned_clinic, created_at__date=today, status='cancelled'
+            ).count()
+            revenue_today = Payment.objects.filter(
+                consultation__clinic=assigned_clinic, status='completed', completed_at__date=today
+            ).aggregate(total=Sum('amount'))['total'] or 0
+            new_patients = User.objects.filter(
+                role='patient', 
+                patient_consultations__clinic=assigned_clinic,
+                patient_consultations__created_at__date=today
+            ).distinct().count()
+        else:
+            # SuperAdmin - show all data
+            consultations_today = Consultation.objects.filter(created_at__date=today).count()
+            completed_consultations = Consultation.objects.filter(
+                created_at__date=today, status='completed'
+            ).count()
+            cancelled_consultations = Consultation.objects.filter(
+                created_at__date=today, status='cancelled'
+            ).count()
+            revenue_today = Payment.objects.filter(
+                status='completed', completed_at__date=today
+            ).aggregate(total=Sum('amount'))['total'] or 0
+            new_patients = User.objects.filter(
+                role='patient', date_joined__date=today
+            ).count()
+        
+        return {
+            'consultations': consultations_today,
+            'new_patients': new_patients,
+            'revenue': float(revenue_today),
+            'completed_consultations': completed_consultations,
+            'cancelled_consultations': cancelled_consultations
+        }
+    
+    def _get_monthly_stats(self, this_month_start, last_month_start, assigned_clinic=None):
+        """Get monthly statistics"""
+        if assigned_clinic:
+            # Admin user - show only their clinic data
+            consultations_this_month = Consultation.objects.filter(
+                clinic=assigned_clinic, created_at__date__gte=this_month_start
+            ).count()
+            consultations_last_month = Consultation.objects.filter(
+                clinic=assigned_clinic, created_at__date__gte=last_month_start,
+                created_at__date__lt=this_month_start
+            ).count()
+            
+            revenue_this_month = Payment.objects.filter(
+                consultation__clinic=assigned_clinic, status='completed', completed_at__date__gte=this_month_start
+            ).aggregate(total=Sum('amount'))['total'] or 0
+            revenue_last_month = Payment.objects.filter(
+                consultation__clinic=assigned_clinic, status='completed', 
+                completed_at__date__gte=last_month_start,
+                completed_at__date__lt=this_month_start
+            ).aggregate(total=Sum('amount'))['total'] or 0
+            
+            new_patients_this_month = User.objects.filter(
+                role='patient', 
+                patient_consultations__clinic=assigned_clinic,
+                patient_consultations__created_at__date__gte=this_month_start
+            ).distinct().count()
+        else:
+            # SuperAdmin - show all data
+            consultations_this_month = Consultation.objects.filter(
+                created_at__date__gte=this_month_start
+            ).count()
+            consultations_last_month = Consultation.objects.filter(
+                created_at__date__gte=last_month_start,
+                created_at__date__lt=this_month_start
+            ).count()
+            
+            revenue_this_month = Payment.objects.filter(
+                status='completed', completed_at__date__gte=this_month_start
+            ).aggregate(total=Sum('amount'))['total'] or 0
+            revenue_last_month = Payment.objects.filter(
+                status='completed', 
+                completed_at__date__gte=last_month_start,
+                completed_at__date__lt=this_month_start
+            ).aggregate(total=Sum('amount'))['total'] or 0
+            
+            new_patients_this_month = User.objects.filter(
+                role='patient', date_joined__date__gte=this_month_start
+            ).count()
+        
+        # Calculate growth rate
+        growth_rate = 0
+        if revenue_last_month > 0:
+            growth_rate = ((revenue_this_month - revenue_last_month) / revenue_last_month) * 100
+        
+        return {
+            'consultations': consultations_this_month,
+            'new_patients': new_patients_this_month,
+            'revenue': float(revenue_this_month),
+            'growth_rate': round(growth_rate, 1)
+        }
+    
+    def _get_clinic_performance(self, assigned_clinic=None):
+        """Get clinic performance data"""
+        if assigned_clinic:
+            # Admin user - show only their assigned clinic
+            clinics = [assigned_clinic]
+        else:
+            # SuperAdmin - show all clinics
+            clinics = Clinic.objects.all()
+        
+        clinic_performance = []
+        
+        for clinic in clinics:
+            consultations = Consultation.objects.filter(clinic=clinic).count()
+            revenue = Payment.objects.filter(
+                consultation__clinic=clinic, status='completed'
+            ).aggregate(total=Sum('amount'))['total'] or 0
+            
+            completed_consultations = Consultation.objects.filter(
+                clinic=clinic, status='completed'
+            ).count()
+            success_rate = (completed_consultations / consultations * 100) if consultations > 0 else 0
+            
+            active_doctors = User.objects.filter(
+                role='doctor', 
+                slots__clinic=clinic,
+                is_active=True
+            ).distinct().count()
+            
+            clinic_performance.append({
+                'id': str(clinic.id),
+                'name': clinic.name,
+                'consultations': consultations,
+                'revenue': float(revenue),
+                'success_rate': round(success_rate, 1),
+                'active_doctors': active_doctors
+            })
+        
+        return clinic_performance
+    
+    def _get_consultation_analytics(self, assigned_clinic=None):
+        """Get consultation analytics"""
+        if assigned_clinic:
+            # Admin user - filter by their clinic
+            consultation_queryset = Consultation.objects.filter(clinic=assigned_clinic)
+            payment_queryset = Payment.objects.filter(consultation__clinic=assigned_clinic)
+        else:
+            # SuperAdmin - show all data
+            consultation_queryset = Consultation.objects.all()
+            payment_queryset = Payment.objects.all()
+        
+        # By status
+        by_status = {}
+        status_counts = consultation_queryset.values('status').annotate(count=Count('id'))
+        for item in status_counts:
+            by_status[item['status']] = item['count']
+        
+        # By type
+        by_type = {}
+        type_counts = consultation_queryset.values('consultation_type').annotate(count=Count('id'))
+        for item in type_counts:
+            by_type[item['consultation_type']] = item['count']
+        
+        # Peak hours (mock data for now)
+        peak_hours = [
+            {'hour': 9, 'count': 45},
+            {'hour': 10, 'count': 52},
+            {'hour': 11, 'count': 38},
+            {'hour': 14, 'count': 41},
+            {'hour': 15, 'count': 48},
+            {'hour': 16, 'count': 35}
+        ]
+        
+        # Daily trends (last 7 days)
+        daily_trends = []
+        for i in range(7):
+            date = timezone.now().date() - timedelta(days=i)
+            consultations = consultation_queryset.filter(created_at__date=date).count()
+            revenue = payment_queryset.filter(
+                status='completed', completed_at__date=date
+            ).aggregate(total=Sum('amount'))['total'] or 0
+            
+            daily_trends.append({
+                'date': date.strftime('%Y-%m-%d'),
+                'consultations': consultations,
+                'revenue': float(revenue)
+            })
+        
+        daily_trends.reverse()  # Show oldest first
+        
+        return {
+            'by_status': by_status,
+            'by_type': by_type,
+            'peak_hours': peak_hours,
+            'daily_trends': daily_trends
+        }
+    
+    def _get_payment_analytics(self, assigned_clinic=None):
+        """Get payment analytics"""
+        if assigned_clinic:
+            # Admin user - filter by their clinic
+            payment_queryset = Payment.objects.filter(consultation__clinic=assigned_clinic)
+        else:
+            # SuperAdmin - show all data
+            payment_queryset = Payment.objects.all()
+        
+        total_payments = payment_queryset.count()
+        successful_payments = payment_queryset.filter(status='completed').count()
+        failed_payments = payment_queryset.filter(status='failed').count()
+        pending_payments = payment_queryset.filter(status='pending').count()
+        
+        average_transaction = payment_queryset.filter(status='completed').aggregate(
+            avg=Avg('amount')
+        )['avg'] or 0
+        
+        # Payment methods
+        payment_methods = {}
+        method_counts = payment_queryset.values('payment_method').annotate(count=Count('id'))
+        for item in method_counts:
+            if item['payment_method']:
+                payment_methods[item['payment_method']] = item['count']
+        
+        # Revenue trends (last 7 days)
+        revenue_trends = []
+        for i in range(7):
+            date = timezone.now().date() - timedelta(days=i)
+            revenue = payment_queryset.filter(
+                status='completed', completed_at__date=date
+            ).aggregate(total=Sum('amount'))['total'] or 0
+            
+            revenue_trends.append({
+                'date': date.strftime('%Y-%m-%d'),
+                'revenue': float(revenue)
+            })
+        
+        revenue_trends.reverse()
+        
+        return {
+            'total_payments': total_payments,
+            'successful_payments': successful_payments,
+            'failed_payments': failed_payments,
+            'pending_payments': pending_payments,
+            'average_transaction_value': float(average_transaction),
+            'payment_methods': payment_methods,
+            'revenue_trends': revenue_trends
+        }
+    
+    def _get_doctor_performance(self, assigned_clinic=None):
+        """Get doctor performance data"""
+        if assigned_clinic:
+            # Admin user - show only doctors from their clinic
+            doctors = User.objects.filter(
+                role='doctor',
+                slots__clinic=assigned_clinic
+            ).distinct()
+        else:
+            # SuperAdmin - show all doctors
+            doctors = User.objects.filter(role='doctor')
+        
+        doctor_performance = []
+        
+        for doctor in doctors:
+            if assigned_clinic:
+                # Filter consultations by clinic for admin
+                consultations = Consultation.objects.filter(
+                    doctor=doctor, clinic=assigned_clinic
+                ).count()
+                revenue = Payment.objects.filter(
+                    consultation__doctor=doctor, 
+                    consultation__clinic=assigned_clinic,
+                    status='completed'
+                ).aggregate(total=Sum('amount'))['total'] or 0
+                completed_consultations = Consultation.objects.filter(
+                    doctor=doctor, clinic=assigned_clinic, status='completed'
+                ).count()
+            else:
+                # All consultations for superadmin
+                consultations = Consultation.objects.filter(doctor=doctor).count()
+                revenue = Payment.objects.filter(
+                    consultation__doctor=doctor, status='completed'
+                ).aggregate(total=Sum('amount'))['total'] or 0
+                completed_consultations = Consultation.objects.filter(
+                    doctor=doctor, status='completed'
+                ).count()
+            
+            success_rate = (completed_consultations / consultations * 100) if consultations > 0 else 0
+            
+            # Mock rating (in real app, this would come from reviews)
+            rating = 4.5
+            
+            # Safely get specialization from doctor profile
+            specialization = 'General'
+            try:
+                if hasattr(doctor, 'doctor_profile') and doctor.doctor_profile:
+                    specialization = doctor.doctor_profile.specialization
+            except Exception:
+                specialization = 'General'
+            
+            doctor_performance.append({
+                'id': str(doctor.id),
+                'name': doctor.name,
+                'specialization': specialization,
+                'consultations': consultations,
+                'revenue': float(revenue),
+                'rating': rating,
+                'success_rate': round(success_rate, 1)
+            })
+        
+        # Sort by revenue descending
+        doctor_performance.sort(key=lambda x: x['revenue'], reverse=True)
+        return doctor_performance
+    
+    def _get_patient_analytics(self, assigned_clinic=None):
+        """Get patient analytics"""
+        if assigned_clinic:
+            # Admin user - show only patients from their clinic
+            patient_queryset = User.objects.filter(
+                role='patient',
+                patient_consultations__clinic=assigned_clinic
+            ).distinct()
+            this_month_start = timezone.now().date().replace(day=1)
+            new_patients_this_month = User.objects.filter(
+                role='patient', 
+                patient_consultations__clinic=assigned_clinic,
+                patient_consultations__created_at__date__gte=this_month_start
+            ).distinct().count()
+            
+            # Active patients (patients with consultations in last 30 days)
+            thirty_days_ago = timezone.now().date() - timedelta(days=30)
+            active_patients = User.objects.filter(
+                role='patient',
+                patient_consultations__clinic=assigned_clinic,
+                patient_consultations__created_at__date__gte=thirty_days_ago
+            ).distinct().count()
+            
+            # Gender distribution
+            gender_distribution = {}
+            gender_counts = patient_queryset.values('gender').annotate(count=Count('id'))
+            for item in gender_counts:
+                if item['gender']:
+                    gender_distribution[item['gender']] = item['count']
+            
+            # Top cities
+            top_cities = []
+            city_counts = patient_queryset.values('city').annotate(count=Count('id'))
+            for item in city_counts:
+                if item['city']:
+                    top_cities.append({
+                        'city': item['city'],
+                        'count': item['count']
+                    })
+        else:
+            # SuperAdmin - show all data
+            patient_queryset = User.objects.filter(role='patient')
+            this_month_start = timezone.now().date().replace(day=1)
+            new_patients_this_month = User.objects.filter(
+                role='patient', date_joined__date__gte=this_month_start
+            ).count()
+            
+            # Active patients (patients with consultations in last 30 days)
+            thirty_days_ago = timezone.now().date() - timedelta(days=30)
+            active_patients = User.objects.filter(
+                role='patient',
+                patient_consultations__created_at__date__gte=thirty_days_ago
+            ).distinct().count()
+            
+            # Gender distribution
+            gender_distribution = {}
+            gender_counts = User.objects.filter(role='patient').values('gender').annotate(count=Count('id'))
+            for item in gender_counts:
+                if item['gender']:
+                    gender_distribution[item['gender']] = item['count']
+            
+            # Top cities
+            top_cities = []
+            city_counts = User.objects.filter(role='patient').values('city').annotate(count=Count('id'))
+            for item in city_counts:
+                if item['city']:
+                    top_cities.append({
+                        'city': item['city'],
+                        'count': item['count']
+                    })
+        
+        # Age distribution (mock data)
+        age_distribution = {
+            '18-25': 120,
+            '26-35': 245,
+            '36-45': 189,
+            '46-55': 156,
+            '56+': 98
+        }
+        
+        # Sort by count descending and take top 5
+        top_cities.sort(key=lambda x: x['count'], reverse=True)
+        top_cities = top_cities[:5]
+        
+        return {
+            'total_patients': patient_queryset.count(),
+            'new_patients_this_month': new_patients_this_month,
+            'active_patients': active_patients,
+            'gender_distribution': gender_distribution,
+            'age_distribution': age_distribution,
+            'top_cities': top_cities
+        }
 
 
 

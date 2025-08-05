@@ -387,3 +387,82 @@ class ConsultationReschedule(models.Model):
     def __str__(self):
         return f"Reschedule for {self.consultation.id} - {self.old_date} to {self.new_date}"
 
+
+class ConsultationReceipt(models.Model):
+    """Receipt for consultation payments"""
+    
+    consultation = models.OneToOneField(
+        Consultation, 
+        on_delete=models.CASCADE, 
+        related_name='receipt'
+    )
+    
+    # Receipt details
+    receipt_number = models.CharField(max_length=50, unique=True)
+    amount = models.DecimalField(max_digits=10, decimal_places=2)
+    payment_method = models.CharField(max_length=50)
+    payment_status = models.CharField(max_length=20)
+    
+    # Issued by
+    issued_by = models.ForeignKey(
+        settings.AUTH_USER_MODEL, 
+        on_delete=models.CASCADE,
+        related_name='issued_receipts'
+    )
+    
+    # Receipt content
+    receipt_content = models.JSONField(default=dict, help_text="Receipt details in JSON format")
+    
+    # Metadata
+    issued_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+    
+    class Meta:
+        db_table = 'consultation_receipts'
+        verbose_name = 'Consultation Receipt'
+        verbose_name_plural = 'Consultation Receipts'
+        ordering = ['-issued_at']
+    
+    def save(self, *args, **kwargs):
+        if not self.receipt_number:
+            # Generate receipt number
+            last_receipt = ConsultationReceipt.objects.order_by('id').last()
+            if last_receipt:
+                last_number = int(last_receipt.receipt_number[3:])
+                new_number = last_number + 1
+            else:
+                new_number = 1
+            
+            self.receipt_number = f"RCP{new_number:06d}"
+        
+        super().save(*args, **kwargs)
+    
+    def __str__(self):
+        return f"Receipt {self.receipt_number} - {self.consultation.id}"
+    
+    @property
+    def formatted_amount(self):
+        """Get formatted amount with currency"""
+        return f"₹{self.amount}"
+    
+    @property
+    def receipt_data(self):
+        """Get formatted receipt data"""
+        consultation = self.consultation
+        return {
+            'receipt_number': self.receipt_number,
+            'consultation_id': consultation.id,
+            'patient_name': consultation.patient.name,
+            'doctor_name': consultation.doctor.name,
+            'clinic_name': consultation.clinic.name if consultation.clinic else 'N/A',
+            'consultation_date': consultation.scheduled_date,
+            'consultation_time': consultation.scheduled_time,
+            'consultation_type': consultation.consultation_type,
+            'amount': self.formatted_amount,
+            'payment_method': self.payment_method,
+            'payment_status': self.payment_status,
+            'issued_by': self.issued_by.name,
+            'issued_at': self.issued_at,
+            'chief_complaint': consultation.chief_complaint,
+        }
+

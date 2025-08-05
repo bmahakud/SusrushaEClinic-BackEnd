@@ -317,8 +317,8 @@ PHONEPE_PROD_SALT_INDEX = "1"
 PHONEPE_PROD_PAY_URL = "https://api.phonepe.com/apis/hermes/pg/v1/pay"
 
 # File Upload Configuration
-FILE_UPLOAD_MAX_MEMORY_SIZE = 10 * 1024 * 1024  # 10MB
-DATA_UPLOAD_MAX_MEMORY_SIZE = 10 * 1024 * 1024  # 10MB
+FILE_UPLOAD_MAX_MEMORY_SIZE = 20 * 1024 * 1024  # 20MB (increased from 10MB)
+DATA_UPLOAD_MAX_MEMORY_SIZE = 20 * 1024 * 1024  # 20MB (increased from 10MB)
 
 # Logging Configuration
 LOGGING = {
