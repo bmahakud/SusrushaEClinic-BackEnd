@@ -117,7 +117,11 @@ class DashboardStatsView(APIView):
         
         # Calculate basic statistics
         total_users = User.objects.count()
-        total_patients = User.objects.filter(role='patient').count()
+        total_patients = User.objects.filter(
+            role='patient',
+            patient_profile__isnull=False,
+            patient_profile__is_active=True
+        ).count()
         total_doctors = User.objects.filter(role='doctor').count()
         total_consultations = Consultation.objects.count()
         total_prescriptions = Prescription.objects.count()
@@ -1619,7 +1623,11 @@ class DetailedAnalyticsView(APIView):
             active_clinics = Clinic.objects.filter(is_active=True).count()
             total_doctors = User.objects.filter(role='doctor').count()
             active_doctors = User.objects.filter(role='doctor', is_active=True).count()
-            total_patients = User.objects.filter(role='patient').count()
+            total_patients = User.objects.filter(
+            role='patient',
+            patient_profile__isnull=False,
+            patient_profile__is_active=True
+        ).count()
             total_consultations = Consultation.objects.count()
             total_revenue = Payment.objects.filter(status='completed').aggregate(
                 total=Sum('amount')
