@@ -5,6 +5,9 @@ from django.core.validators import RegexValidator
 import uuid
 
 
+from .managers import UserManager
+
+
 class UserManager(BaseUserManager):
     """Custom user manager for phone-based authentication"""
     
@@ -175,6 +178,18 @@ class OTP(models.Model):
     def is_valid(self):
         """Check if OTP is valid (not used and not expired)"""
         return not self.is_used and not self.is_expired
+    @property
+    def has_patient_profile(self):
+        """Check if user has an active PatientProfile"""
+        if self.role != 'patient':
+            return False
+        return hasattr(self, 'patient_profile') and self.patient_profile.is_active
+    
+    @property
+    def is_complete_patient(self):
+        """Check if patient account is complete (has profile)"""
+        return self.role == 'patient' and self.has_patient_profile
+
 
 
 class UserSession(models.Model):
