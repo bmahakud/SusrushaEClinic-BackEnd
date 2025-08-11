@@ -5,9 +5,6 @@ from django.core.validators import RegexValidator
 import uuid
 
 
-from .managers import UserManager
-
-
 class UserManager(BaseUserManager):
     """Custom user manager for phone-based authentication"""
     
