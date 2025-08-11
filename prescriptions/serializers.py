@@ -292,8 +292,9 @@ class PrescriptionPDFSerializer(serializers.ModelSerializer):
                 
                 # Generate signed URL for the PDF file
                 file_key = str(obj.pdf_file)
-                if not file_key.startswith(f"{settings.AWS_LOCATION}/"):
-                    file_key = f"{settings.AWS_LOCATION}/{file_key}"
+                aws_location = getattr(settings, 'AWS_LOCATION', 'edrcontainer1')
+                if not file_key.startswith(f"{aws_location}/"):
+                    file_key = f"{aws_location}/{file_key}"
                 
                 signed_url = generate_signed_url(file_key, expiration=3600)  # 1 hour expiration
                 return signed_url

@@ -638,8 +638,9 @@ class PrescriptionViewSet(viewsets.ModelViewSet):
                 try:
                     # Get the file key from the file path and ensure it includes AWS_LOCATION
                     file_key = str(pdf_instance.pdf_file)
-                    if not file_key.startswith(f"{settings.AWS_LOCATION}/"):
-                        file_key = f"{settings.AWS_LOCATION}/{file_key}"
+                    aws_location = getattr(settings, 'AWS_LOCATION', 'edrcontainer1')
+                    if not file_key.startswith(f"{aws_location}/"):
+                        file_key = f"{aws_location}/{file_key}"
                     
                     # Add a small delay to allow the signal to upload the file to DigitalOcean Spaces
                     import time
@@ -697,8 +698,9 @@ class PrescriptionViewSet(viewsets.ModelViewSet):
             if pdf.pdf_file:
                 try:
                     file_key = str(pdf.pdf_file)
-                    if not file_key.startswith(f"{settings.AWS_LOCATION}/"):
-                        file_key = f"{settings.AWS_LOCATION}/{file_key}"
+                    aws_location = getattr(settings, 'AWS_LOCATION', 'edrcontainer1')
+                    if not file_key.startswith(f"{aws_location}/"):
+                        file_key = f"{aws_location}/{file_key}"
                     file_url = generate_signed_url(file_key, expiration=3600)  # 1 hour expiration
                 except Exception as e:
                     print(f"Error generating signed URL for PDF version: {e}")
