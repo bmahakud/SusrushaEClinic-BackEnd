@@ -1,10 +1,10 @@
 from rest_framework import serializers
-from .models import Prescription, PrescriptionMedication, PrescriptionVitalSigns
+from .models import Prescription, PrescriptionMedication, PrescriptionVitalSigns, PrescriptionPDF
 
 # Simple User Serializer for prescription system
 class UserSerializer(serializers.Serializer):
     """Simple user serializer for prescription system"""
-    id = serializers.IntegerField()
+    id = serializers.CharField()  # Changed from IntegerField to CharField to match User model
     name = serializers.CharField()
     phone = serializers.CharField()
     email = serializers.EmailField(required=False, allow_blank=True)
@@ -223,35 +223,130 @@ class PrescriptionListSerializer(serializers.ModelSerializer):
 class PrescriptionDetailSerializer(PrescriptionSerializer):
     """Detailed prescription serializer with all related data"""
     
+    # These are computed fields, not model fields
+    consultation_details = serializers.SerializerMethodField()
+    patient_history = serializers.SerializerMethodField()
+    current_pdf = serializers.SerializerMethodField()
+    
     class Meta(PrescriptionSerializer.Meta):
         fields = PrescriptionSerializer.Meta.fields + [
-            'consultation_details', 'patient_history'
+            'consultation_details', 'patient_history', 'current_pdf'
         ]
     
-    def to_representation(self, instance):
-        data = super().to_representation(instance)
-        
-        # Add consultation details
-        if instance.consultation:
-            data['consultation_details'] = {
-                'id': instance.consultation.id,
-                'scheduled_date': instance.consultation.scheduled_date,
-                'scheduled_time': instance.consultation.scheduled_time,
-                'status': instance.consultation.status,
-                'consultation_type': instance.consultation.consultation_type,
-                'chief_complaint': instance.consultation.chief_complaint,
+    def get_consultation_details(self, obj):
+        """Get consultation details"""
+        if obj.consultation:
+            return {
+                'id': obj.consultation.id,
+                'scheduled_date': obj.consultation.scheduled_date,
+                'scheduled_time': obj.consultation.scheduled_time,
+                'status': obj.consultation.status,
+                'consultation_type': obj.consultation.consultation_type,
+                'chief_complaint': obj.consultation.chief_complaint,
             }
-        
-        # Add patient history (last 5 prescriptions)
+        return None
+    
+    def get_patient_history(self, obj):
+        """Get patient history (last 5 prescriptions)"""
         patient_prescriptions = Prescription.objects.filter(
-            patient=instance.patient
-        ).exclude(id=instance.id).order_by('-created_at')[:5]
+            patient=obj.patient
+        ).exclude(id=obj.id).order_by('-created_at')[:5]
         
-        data['patient_history'] = PrescriptionListSerializer(
+        return PrescriptionListSerializer(
             patient_prescriptions, many=True
         ).data
-        
-        return data
+    
+    def get_current_pdf(self, obj):
+        """Get current PDF version for finalized prescriptions"""
+        if obj.is_finalized:
+            current_pdf = obj.pdf_versions.filter(is_current=True).first()
+            if current_pdf:
+                return PrescriptionPDFSerializer(
+                    current_pdf, 
+                    context=self.context
+                ).data
+        return None
+
+
+class PrescriptionPDFSerializer(serializers.ModelSerializer):
+    """Serializer for prescription PDF versions"""
+    
+    generated_by = UserSerializer(read_only=True)
+    file_url = serializers.SerializerMethodField()
+    prescription_info = serializers.SerializerMethodField()
+    
+    class Meta:
+        model = PrescriptionPDF
+        fields = [
+            'id', 'version_number', 'is_current', 'generated_at', 'generated_by',
+            'file_url', 'file_size', 'checksum', 'prescription_info'
+        ]
+        read_only_fields = ['id', 'version_number', 'generated_at', 'file_size', 'checksum']
+    
+    def get_file_url(self, obj):
+        """Get PDF file URL with signed URL"""
+        if obj.pdf_file:
+            try:
+                from utils.signed_urls import generate_signed_url
+                from django.conf import settings
+                
+                # Generate signed URL for the PDF file
+                file_key = str(obj.pdf_file)
+                if not file_key.startswith(f"{settings.AWS_LOCATION}/"):
+                    file_key = f"{settings.AWS_LOCATION}/{file_key}"
+                
+                signed_url = generate_signed_url(file_key, expiration=3600)  # 1 hour expiration
+                return signed_url
+                
+            except Exception as e:
+                print(f"Error generating signed URL for PDF {obj.id}: {e}")
+                # Fallback to direct URL
+                request = self.context.get('request')
+                if request:
+                    return request.build_absolute_uri(obj.pdf_file.url)
+                return obj.pdf_file.url
+        return None
+    
+    def get_prescription_info(self, obj):
+        """Get basic prescription information"""
+        return {
+            'id': obj.prescription.id,
+            'patient_name': obj.prescription.patient.name,
+            'doctor_name': obj.prescription.doctor.name,
+            'issued_date': obj.prescription.issued_date,
+            'primary_diagnosis': obj.prescription.primary_diagnosis
+        }
+
+
+class PrescriptionWithPDFSerializer(PrescriptionDetailSerializer):
+    """Prescription serializer with PDF version information"""
+    
+    pdf_versions = serializers.SerializerMethodField()
+    current_pdf = serializers.SerializerMethodField()
+    
+    class Meta(PrescriptionDetailSerializer.Meta):
+        fields = PrescriptionDetailSerializer.Meta.fields + [
+            'pdf_versions', 'current_pdf'
+        ]
+    
+    def get_pdf_versions(self, obj):
+        """Get all PDF versions for this prescription"""
+        pdf_versions = obj.pdf_versions.order_by('-version_number')
+        return PrescriptionPDFSerializer(
+            pdf_versions, 
+            many=True, 
+            context=self.context
+        ).data
+    
+    def get_current_pdf(self, obj):
+        """Get current PDF version"""
+        current_pdf = obj.pdf_versions.filter(is_current=True).first()
+        if current_pdf:
+            return PrescriptionPDFSerializer(
+                current_pdf, 
+                context=self.context
+            ).data
+        return None
 
 
 

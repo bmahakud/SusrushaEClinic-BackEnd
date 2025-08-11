@@ -66,6 +66,7 @@ LOCAL_APPS = [
     'analytics',
     'notifications',
     'websockets',
+    'utils',
 ]
 
 INSTALLED_APPS = DJANGO_APPS + THIRD_PARTY_APPS + LOCAL_APPS
@@ -432,10 +433,6 @@ else:
     MEDIA_URL = '/media/'
     MEDIA_ROOT = BASE_DIR / 'media_cdn'
 
-# OTP Configuration
-OTP_TEST_MODE = True
-OTP_TEST_CODE = '999999'
-
 # WebSocket Configuration
 ASGI_APPLICATION = 'myproject.asgi.application'
 
@@ -448,6 +445,10 @@ CHANNEL_LAYERS = {
         },
     },
 }
+# OTP Configuration
+OTP_TEST_MODE = True
+OTP_TEST_CODE = '999999'
+
 
 # WebSocket URL patterns
 WEBSOCKET_URLS = {

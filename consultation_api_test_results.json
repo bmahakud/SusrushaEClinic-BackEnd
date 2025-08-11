@@ -1,0 +1,93 @@
+[
+  {
+    "test_name": "API Documentation - Swagger",
+    "success": true,
+    "message": "Swagger UI accessible",
+    "timestamp": "2025-08-10T16:12:07.956933",
+    "data": null
+  },
+  {
+    "test_name": "API Documentation",
+    "success": false,
+    "message": "Error: Expecting value: line 1 column 1 (char 0)",
+    "timestamp": "2025-08-10T16:12:09.632106",
+    "data": null
+  },
+  {
+    "test_name": "Consultation List",
+    "success": true,
+    "message": "Retrieved 95 consultations",
+    "timestamp": "2025-08-10T16:12:09.761967",
+    "data": null
+  },
+  {
+    "test_name": "Consultation Detail",
+    "success": true,
+    "message": "Retrieved consultation CON065",
+    "timestamp": "2025-08-10T16:12:09.900082",
+    "data": null
+  },
+  {
+    "test_name": "Admin Permissions",
+    "success": true,
+    "message": "Found 10 admins, 3 superadmins",
+    "timestamp": "2025-08-10T16:12:09.988071",
+    "data": null
+  },
+  {
+    "test_name": "Prescription Integration",
+    "success": false,
+    "message": "Status: 401",
+    "timestamp": "2025-08-10T16:12:10.034938",
+    "data": null
+  },
+  {
+    "test_name": "Doctor Slots",
+    "success": false,
+    "message": "Status: 401",
+    "timestamp": "2025-08-10T16:12:10.080841",
+    "data": null
+  },
+  {
+    "test_name": "Analytics Endpoints",
+    "success": true,
+    "message": "Analytics endpoints accessible",
+    "timestamp": "2025-08-10T16:12:10.129987",
+    "data": null
+  },
+  {
+    "test_name": "Enhanced Features - Real-time Updates",
+    "success": true,
+    "message": "Real-time updates endpoint accessible",
+    "timestamp": "2025-08-10T16:12:10.178007",
+    "data": null
+  },
+  {
+    "test_name": "Enhanced Features - Analytics",
+    "success": true,
+    "message": "Analytics endpoint accessible",
+    "timestamp": "2025-08-10T16:12:10.227888",
+    "data": null
+  },
+  {
+    "test_name": "Enhanced Features - Dashboard Stats",
+    "success": true,
+    "message": "Dashboard stats endpoint accessible",
+    "timestamp": "2025-08-10T16:12:10.277190",
+    "data": null
+  },
+  {
+    "test_name": "WebSocket Endpoints",
+    "success": true,
+    "message": "WebSocket routing configured (manual testing required)",
+    "timestamp": "2025-08-10T16:12:10.277318",
+    "data": null
+  },
+  {
+    "test_name": "Authentication",
+    "success": true,
+    "message": "OTP sent successfully",
+    "timestamp": "2025-08-10T16:12:10.442900",
+    "data": null
+  }
+]

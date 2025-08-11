@@ -2,109 +2,155 @@
 Signals for automatic file upload to DigitalOcean Spaces
 """
 
-from django.db.models.signals import post_save
+from django.db.models.signals import post_save, post_delete
 from django.dispatch import receiver
-from django.conf import settings
-from .models import ConsultationAttachment
-import threading
-import boto3
-import os
+from django.utils import timezone
+from channels.layers import get_channel_layer
+from asgiref.sync import async_to_sync
+import json
+from .models import Consultation, ConsultationNote, ConsultationVitalSigns, ConsultationDiagnosis
 
-def upload_consultation_attachment_async(attachment_id):
-    """
-    Asynchronous function to upload consultation attachment to DigitalOcean Spaces
-    """
-    try:
-        from consultations.models import ConsultationAttachment
-        
-        # Get the attachment
-        attachment = ConsultationAttachment.objects.get(id=attachment_id)
-        
-        # Initialize S3 client
-        s3_client = boto3.client(
-            's3',
-            aws_access_key_id=settings.AWS_ACCESS_KEY_ID,
-            aws_secret_access_key=settings.AWS_SECRET_ACCESS_KEY,
-            endpoint_url=settings.AWS_S3_ENDPOINT_URL,
-            region_name=settings.AWS_S3_REGION_NAME
-        )
-        
-        # Upload attachment if it exists
-        if attachment.file and hasattr(attachment.file, 'path'):
-            local_path = attachment.file.path
-            if os.path.exists(local_path):
-                remote_key = f"{settings.AWS_LOCATION}/{attachment.file.name}"
-                try:
-                    s3_client.upload_file(local_path, settings.AWS_STORAGE_BUCKET_NAME, remote_key)
-                    # Make file public
-                    s3_client.put_object_acl(
-                        Bucket=settings.AWS_STORAGE_BUCKET_NAME,
-                        Key=remote_key,
-                        ACL='public-read'
-                    )
-                    print(f"✅ [ASYNC] Uploaded consultation attachment to DigitalOcean Spaces: {remote_key}")
-                except Exception as e:
-                    print(f"❌ [ASYNC] Error uploading consultation attachment: {e}")
-                    
-    except Exception as e:
-        print(f"❌ [ASYNC] Error in upload_consultation_attachment_async: {e}")
+channel_layer = get_channel_layer()
 
-def upload_consultation_attachment_sync(attachment_id):
-    """
-    Synchronous function to upload consultation attachment to DigitalOcean Spaces immediately
-    """
-    try:
-        from consultations.models import ConsultationAttachment
-        
-        # Get the attachment
-        attachment = ConsultationAttachment.objects.get(id=attachment_id)
-        
-        # Initialize S3 client
-        s3_client = boto3.client(
-            's3',
-            aws_access_key_id=settings.AWS_ACCESS_KEY_ID,
-            aws_secret_access_key=settings.AWS_SECRET_ACCESS_KEY,
-            endpoint_url=settings.AWS_S3_ENDPOINT_URL,
-            region_name=settings.AWS_S3_REGION_NAME
-        )
-        
-        # Upload attachment if it exists
-        if attachment.file and hasattr(attachment.file, 'path'):
-            local_path = attachment.file.path
-            if os.path.exists(local_path):
-                remote_key = f"{settings.AWS_LOCATION}/{attachment.file.name}"
-                try:
-                    s3_client.upload_file(local_path, settings.AWS_STORAGE_BUCKET_NAME, remote_key)
-                    # Make file public
-                    s3_client.put_object_acl(
-                        Bucket=settings.AWS_STORAGE_BUCKET_NAME,
-                        Key=remote_key,
-                        ACL='public-read'
-                    )
-                    print(f"✅ [SYNC] Uploaded consultation attachment to DigitalOcean Spaces: {remote_key}")
-                except Exception as e:
-                    print(f"❌ [SYNC] Error uploading consultation attachment: {e}")
-                    
-    except Exception as e:
-        print(f"❌ [SYNC] Error in upload_consultation_attachment_sync: {e}")
-
-@receiver(post_save, sender=ConsultationAttachment)
-def upload_consultation_attachment_to_spaces(sender, instance, created, **kwargs):
-    """
-    Automatically upload consultation attachment to DigitalOcean Spaces after saving
-    """
-    if not settings.ALWAYS_UPLOAD_FILES_TO_AWS:
-        return
+@receiver(post_save, sender=Consultation)
+def consultation_status_change_notification(sender, instance, created, **kwargs):
+    """Send real-time notification when consultation status changes"""
+    if created:
+        # New consultation created
+        notification_data = {
+            'type': 'consultation_created',
+            'consultation_id': instance.id,
+            'patient_name': instance.patient.name,
+            'doctor_name': instance.doctor.name,
+            'scheduled_date': instance.scheduled_date.isoformat(),
+            'scheduled_time': instance.scheduled_time.isoformat(),
+            'status': instance.status,
+            'timestamp': timezone.now().isoformat()
+        }
+    else:
+        # Consultation updated
+        notification_data = {
+            'type': 'consultation_updated',
+            'consultation_id': instance.id,
+            'patient_name': instance.patient.name,
+            'doctor_name': instance.doctor.name,
+            'status': instance.status,
+            'timestamp': timezone.now().isoformat()
+        }
     
-    try:
-        # For immediate access, upload synchronously first, then start async thread for any retries
-        upload_consultation_attachment_sync(instance.id)
+    # Send to doctor's personal channel
+    doctor_channel = f"doctor_{instance.doctor.id}"
+    async_to_sync(channel_layer.group_send)(
+        doctor_channel,
+        {
+            'type': 'consultation_notification',
+            'message': notification_data
+        }
+    )
+    
+    # Send to patient's personal channel
+    patient_channel = f"patient_{instance.patient.id}"
+    async_to_sync(channel_layer.group_send)(
+        patient_channel,
+        {
+            'type': 'consultation_notification',
+            'message': notification_data
+        }
+    )
+
+@receiver(post_save, sender=ConsultationNote)
+def consultation_note_notification(sender, instance, created, **kwargs):
+    """Send notification when consultation notes are added"""
+    if created:
+        notification_data = {
+            'type': 'consultation_note_added',
+            'consultation_id': instance.consultation.id,
+            'note_type': instance.note_type,
+            'created_by': instance.created_by.name,
+            'timestamp': timezone.now().isoformat()
+        }
         
-        # Also start async thread for any additional processing
-        thread = threading.Thread(target=upload_consultation_attachment_async, args=(instance.id,))
-        thread.daemon = True  # Thread will be killed when main process exits
-        thread.start()
-        print(f"🚀 [SIGNAL] Started async upload thread for consultation attachment {instance.id}")
-                    
-    except Exception as e:
-        print(f"❌ Error in upload_consultation_attachment_to_spaces signal: {e}") 
+        # Send to doctor
+        doctor_channel = f"doctor_{instance.consultation.doctor.id}"
+        async_to_sync(channel_layer.group_send)(
+            doctor_channel,
+            {
+                'type': 'consultation_notification',
+                'message': notification_data
+            }
+        )
+
+@receiver(post_save, sender=ConsultationVitalSigns)
+def vital_signs_notification(sender, instance, created, **kwargs):
+    """Send notification when vital signs are recorded"""
+    if created:
+        notification_data = {
+            'type': 'vital_signs_recorded',
+            'consultation_id': instance.consultation.id,
+            'patient_name': instance.consultation.patient.name,
+            'recorded_by': instance.recorded_by.name,
+            'timestamp': timezone.now().isoformat()
+        }
+        
+        # Send to doctor
+        doctor_channel = f"doctor_{instance.consultation.doctor.id}"
+        async_to_sync(channel_layer.group_send)(
+            doctor_channel,
+            {
+                'type': 'consultation_notification',
+                'message': notification_data
+            }
+        )
+
+@receiver(post_save, sender=ConsultationDiagnosis)
+def diagnosis_notification(sender, instance, created, **kwargs):
+    """Send notification when diagnosis is added"""
+    if created:
+        notification_data = {
+            'type': 'diagnosis_added',
+            'consultation_id': instance.consultation.id,
+            'diagnosis': instance.diagnosis,
+            'diagnosis_type': instance.diagnosis_type,
+            'timestamp': timezone.now().isoformat()
+        }
+        
+        # Send to doctor
+        doctor_channel = f"doctor_{instance.consultation.doctor.id}"
+        async_to_sync(channel_layer.group_send)(
+            doctor_channel,
+            {
+                'type': 'consultation_notification',
+                'message': notification_data
+            }
+        )
+
+@receiver(post_delete, sender=Consultation)
+def consultation_deleted_notification(sender, instance, **kwargs):
+    """Send notification when consultation is deleted"""
+    notification_data = {
+        'type': 'consultation_deleted',
+        'consultation_id': instance.id,
+        'patient_name': instance.patient.name,
+        'doctor_name': instance.doctor.name,
+        'timestamp': timezone.now().isoformat()
+    }
+    
+    # Send to doctor's personal channel
+    doctor_channel = f"doctor_{instance.doctor.id}"
+    async_to_sync(channel_layer.group_send)(
+        doctor_channel,
+        {
+            'type': 'consultation_notification',
+            'message': notification_data
+        }
+    )
+    
+    # Send to patient's personal channel
+    patient_channel = f"patient_{instance.patient.id}"
+    async_to_sync(channel_layer.group_send)(
+        patient_channel,
+        {
+            'type': 'consultation_notification',
+            'message': notification_data
+        }
+    ) 

@@ -21,6 +21,7 @@ from django.conf.urls.static import static
 from django.views.generic import TemplateView
 from drf_spectacular.views import SpectacularAPIView, SpectacularSwaggerView, SpectacularRedocView
 from django.views.static import serve
+from django.http import JsonResponse
 
 urlpatterns = [
     # Admin
@@ -41,6 +42,7 @@ urlpatterns = [
     path('api/eclinic/', include('eclinic.urls')),
     path('api/analytics/', include('analytics.urls')),
     path('api/notifications/', include('notifications.urls')),
+    path('api/utils/', include('utils.urls')),
 ]
 
 # Serve media files in development
@@ -48,8 +50,22 @@ if settings.DEBUG:
     urlpatterns += static(settings.MEDIA_URL, document_root=settings.MEDIA_ROOT)
     urlpatterns += static('/assets/', document_root=settings.BASE_DIR / 'build' / 'assets')
 
-# Frontend catch-all route (only for non-API paths)
+def api_root(request):
+    return JsonResponse({
+        'message': 'Sushrusa Healthcare API',
+        'version': '1.0',
+        'endpoints': {
+            'admin': '/admin/',
+            'api_docs': '/api/docs/',
+            'api_auth': '/api/auth/',
+            'api_patients': '/api/patients/',
+            'api_doctors': '/api/doctors/',
+            'api_consultations': '/api/consultations/',
+            'api_prescriptions': '/api/prescriptions/'
+        }
+    })
+
 urlpatterns += [
-    path('', TemplateView.as_view(template_name='index.html')),
+    path('', api_root, name='api_root'),
 ]
 

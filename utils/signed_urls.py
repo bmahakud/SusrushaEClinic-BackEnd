@@ -20,6 +20,10 @@ def generate_signed_url(file_key, expiration=3600):
         str: Signed URL for accessing the file
     """
     try:
+        # Ensure file_key includes AWS_LOCATION prefix
+        if not file_key.startswith(f"{settings.AWS_LOCATION}/"):
+            file_key = f"{settings.AWS_LOCATION}/{file_key}"
+        
         # Initialize S3 client for DigitalOcean Spaces
         s3_client = boto3.client(
             's3',

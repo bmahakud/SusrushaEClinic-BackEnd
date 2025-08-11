@@ -41,6 +41,67 @@ class PaymentPagination(PageNumberPagination):
     max_page_size = 100
 
 
+class PatientPaymentsView(APIView):
+    """View for patient to get their payments"""
+    permission_classes = [permissions.IsAuthenticated]
+    
+    @extend_schema(
+        parameters=[
+            OpenApiParameter('status', OpenApiTypes.STR, description='Filter by payment status'),
+            OpenApiParameter('payment_method', OpenApiTypes.STR, description='Filter by payment method'),
+            OpenApiParameter('ordering', OpenApiTypes.STR, description='Order by field (e.g., -created_at)'),
+            OpenApiParameter('page', OpenApiTypes.INT, description='Page number'),
+            OpenApiParameter('page_size', OpenApiTypes.INT, description='Number of items per page'),
+        ],
+        responses={200: PaymentListSerializer(many=True)},
+        description="Get payments for the logged-in patient"
+    )
+    def get(self, request):
+        """Get payments for the logged-in patient"""
+        # Check if user is a patient
+        if request.user.role != 'patient':
+            return Response({
+                'success': False,
+                'error': {
+                    'code': 'PERMISSION_DENIED',
+                    'message': 'Only patients can access this endpoint'
+                },
+                'timestamp': timezone.now().isoformat()
+            }, status=status.HTTP_403_FORBIDDEN)
+        
+        # Get payments for the patient
+        queryset = Payment.objects.filter(patient=request.user).select_related('consultation')
+        
+        # Apply filters
+        status_filter = request.query_params.get('status')
+        if status_filter:
+            queryset = queryset.filter(status=status_filter)
+        
+        payment_method = request.query_params.get('payment_method')
+        if payment_method:
+            queryset = queryset.filter(payment_method=payment_method)
+        
+        # Apply ordering
+        ordering = request.query_params.get('ordering', '-created_at')
+        queryset = queryset.order_by(ordering)
+        
+        # Apply pagination
+        paginator = PaymentPagination()
+        page = paginator.paginate_queryset(queryset, request)
+        
+        if page is not None:
+            serializer = PaymentListSerializer(page, many=True)
+            return paginator.get_paginated_response(serializer.data)
+        
+        serializer = PaymentListSerializer(queryset, many=True)
+        return Response({
+            'success': True,
+            'data': serializer.data,
+            'message': 'Patient payments retrieved successfully',
+            'timestamp': timezone.now().isoformat()
+        })
+
+
 class PaymentViewSet(ModelViewSet):
     """ViewSet for payment management"""
     queryset = Payment.objects.all()

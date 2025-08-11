@@ -30,6 +30,62 @@ class PatientPagination(PageNumberPagination):
     max_page_size = 100
 
 
+class PatientMedicalRecordsView(APIView):
+    """View for patient to get their medical records"""
+    permission_classes = [permissions.IsAuthenticated]
+    
+    @extend_schema(
+        parameters=[
+            OpenApiParameter('record_type', OpenApiTypes.STR, description='Filter by record type'),
+            OpenApiParameter('ordering', OpenApiTypes.STR, description='Order by field (e.g., -date_recorded)'),
+            OpenApiParameter('page', OpenApiTypes.INT, description='Page number'),
+            OpenApiParameter('page_size', OpenApiTypes.INT, description='Number of items per page'),
+        ],
+        responses={200: MedicalRecordSerializer(many=True)},
+        description="Get medical records for the logged-in patient"
+    )
+    def get(self, request):
+        """Get medical records for the logged-in patient"""
+        # Check if user is a patient
+        if request.user.role != 'patient':
+            return Response({
+                'success': False,
+                'error': {
+                    'code': 'PERMISSION_DENIED',
+                    'message': 'Only patients can access this endpoint'
+                },
+                'timestamp': timezone.now().isoformat()
+            }, status=status.HTTP_403_FORBIDDEN)
+        
+        # Get medical records for the patient
+        queryset = MedicalRecord.objects.filter(patient=request.user).select_related('recorded_by')
+        
+        # Apply filters
+        record_type = request.query_params.get('record_type')
+        if record_type:
+            queryset = queryset.filter(record_type=record_type)
+        
+        # Apply ordering
+        ordering = request.query_params.get('ordering', '-date_recorded')
+        queryset = queryset.order_by(ordering)
+        
+        # Apply pagination
+        paginator = PatientPagination()
+        page = paginator.paginate_queryset(queryset, request)
+        
+        if page is not None:
+            serializer = MedicalRecordSerializer(page, many=True)
+            return paginator.get_paginated_response(serializer.data)
+        
+        serializer = MedicalRecordSerializer(queryset, many=True)
+        return Response({
+            'success': True,
+            'data': serializer.data,
+            'message': 'Patient medical records retrieved successfully',
+            'timestamp': timezone.now().isoformat()
+        })
+
+
 class PatientProfileViewSet(ModelViewSet):
     """ViewSet for patient profile management"""
     queryset = PatientProfile.objects.all()

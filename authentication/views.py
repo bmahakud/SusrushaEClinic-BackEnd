@@ -127,6 +127,9 @@ class VerifyOTPView(APIView):
                 'profile': self.get_profile_data(user)
             }
             
+            # Determine message based on whether it's a new user or login
+            message = 'Registration successful' if is_new_user else 'Login successful'
+            
             return Response({
                 'success': True,
                 'data': {
@@ -134,7 +137,7 @@ class VerifyOTPView(APIView):
                     'refresh': str(refresh),
                     'user': user_data
                 },
-                'message': 'Login successful',
+                'message': message,
                 'timestamp': timezone.now().isoformat()
             }, status=status.HTTP_200_OK)
         

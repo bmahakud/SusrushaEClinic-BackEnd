@@ -11,6 +11,7 @@ from django.shortcuts import get_object_or_404
 from drf_spectacular.utils import extend_schema, OpenApiParameter
 from drf_spectacular.openapi import OpenApiTypes
 from datetime import datetime, timedelta
+from django.core.exceptions import ValidationError
 
 from authentication.models import User
 from .models import (
@@ -30,7 +31,7 @@ from .serializers import (
     ConsultationReceiptSerializer, ConsultationReceiptCreateSerializer
 )
 from doctors.serializers import DoctorSlotSerializer
-from .services import WhatsAppNotificationService
+from .services import WhatsAppNotificationService, ConsultationService, ConsultationAnalyticsService, ConsultationAutoCompletionService
 
 
 class ConsultationPagination(PageNumberPagination):
@@ -63,6 +64,150 @@ class IsAdminWithClinicOrSuperAdmin(BasePermission):
                 return False
         
         return False
+
+
+class PatientConsultationView(APIView):
+    """View for patient to get their consultations"""
+    permission_classes = [permissions.IsAuthenticated]
+    
+    @extend_schema(
+        parameters=[
+            OpenApiParameter('status', OpenApiTypes.STR, description='Filter by consultation status'),
+            OpenApiParameter('start_date', OpenApiTypes.DATE, description='Filter consultations from this date (YYYY-MM-DD)'),
+            OpenApiParameter('end_date', OpenApiTypes.DATE, description='Filter consultations until this date (YYYY-MM-DD)'),
+            OpenApiParameter('ordering', OpenApiTypes.STR, description='Order by field (e.g., -scheduled_date)'),
+            OpenApiParameter('page', OpenApiTypes.INT, description='Page number'),
+            OpenApiParameter('page_size', OpenApiTypes.INT, description='Number of items per page'),
+        ],
+        responses={200: ConsultationListSerializer(many=True)},
+        description="Get consultations for the logged-in patient"
+    )
+    def get(self, request):
+        """Get consultations for the logged-in patient"""
+        # Check if user is a patient
+        if request.user.role != 'patient':
+            return Response({
+                'success': False,
+                'error': {
+                    'code': 'PERMISSION_DENIED',
+                    'message': 'Only patients can access this endpoint'
+                },
+                'timestamp': timezone.now().isoformat()
+            }, status=status.HTTP_403_FORBIDDEN)
+        
+        # Get consultations for the patient
+        queryset = Consultation.objects.filter(patient=request.user).select_related('doctor', 'clinic')
+        
+        # Apply filters
+        status_filter = request.query_params.get('status')
+        if status_filter:
+            queryset = queryset.filter(status=status_filter)
+        
+        # Apply date range filters
+        start_date = request.query_params.get('start_date')
+        end_date = request.query_params.get('end_date')
+        
+        print(f"🔍 Date filtering - Start: {start_date}, End: {end_date}")
+        
+        if start_date:
+            try:
+                from datetime import datetime
+                start_date_obj = datetime.strptime(start_date, '%Y-%m-%d').date()
+                print(f"🔍 Start date object: {start_date_obj}")
+                queryset = queryset.filter(scheduled_date__gte=start_date_obj)
+                print(f"🔍 After start date filter, queryset count: {queryset.count()}")
+            except ValueError:
+                return Response({
+                    'success': False,
+                    'error': {
+                        'code': 'INVALID_DATE',
+                        'message': 'Invalid start_date format. Use YYYY-MM-DD'
+                    },
+                    'timestamp': timezone.now().isoformat()
+                }, status=status.HTTP_400_BAD_REQUEST)
+        
+        if end_date:
+            try:
+                from datetime import datetime
+                end_date_obj = datetime.strptime(end_date, '%Y-%m-%d').date()
+                print(f"🔍 End date object: {end_date_obj}")
+                queryset = queryset.filter(scheduled_date__lte=end_date_obj)
+                print(f"🔍 After end date filter, queryset count: {queryset.count()}")
+            except ValueError:
+                return Response({
+                    'success': False,
+                    'error': {
+                        'code': 'INVALID_DATE',
+                        'message': 'Invalid end_date format. Use YYYY-MM-DD'
+                    },
+                    'timestamp': timezone.now().isoformat()
+                }, status=status.HTTP_400_BAD_REQUEST)
+        
+        # Debug: Print all consultation dates in the queryset
+        if start_date or end_date:
+            print("🔍 All consultations in filtered queryset:")
+            for consultation in queryset:
+                print(f"  - {consultation.id}: {consultation.scheduled_date} (Dr. {consultation.doctor.name})")
+        
+        # Apply ordering
+        ordering = request.query_params.get('ordering', '-scheduled_date')
+        queryset = queryset.order_by(ordering)
+        
+        # Apply pagination
+        paginator = ConsultationPagination()
+        page = paginator.paginate_queryset(queryset, request)
+        
+        if page is not None:
+            serializer = ConsultationListSerializer(page, many=True)
+            return paginator.get_paginated_response(serializer.data)
+        
+        serializer = ConsultationListSerializer(queryset, many=True)
+        return Response({
+            'success': True,
+            'data': serializer.data,
+            'message': 'Patient consultations retrieved successfully',
+            'timestamp': timezone.now().isoformat()
+        })
+
+    def post(self, request):
+        """Auto-complete overdue consultations for the patient"""
+        try:
+            # Get parameters from request
+            hours_overdue = request.data.get('hours_overdue', 1)
+            status_filter = request.data.get('status_filter', 'both')
+            
+            # Call the auto-completion service
+            result = ConsultationAutoCompletionService.check_and_complete_overdue_consultations(
+                hours_overdue=hours_overdue,
+                status_filter=status_filter
+            )
+            
+            if result['success']:
+                return Response({
+                    'success': True,
+                    'data': result,
+                    'message': result['message'],
+                    'timestamp': timezone.now().isoformat()
+                }, status=status.HTTP_200_OK)
+            else:
+                return Response({
+                    'success': False,
+                    'error': {
+                        'code': 'AUTO_COMPLETION_ERROR',
+                        'message': result['error']
+                    },
+                    'timestamp': timezone.now().isoformat()
+                }, status=status.HTTP_400_BAD_REQUEST)
+                
+        except Exception as e:
+            return Response({
+                'success': False,
+                'error': {
+                    'code': 'AUTO_COMPLETION_ERROR',
+                    'message': str(e)
+                },
+                'timestamp': timezone.now().isoformat()
+            }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
 
 
 class ConsultationViewSet(ModelViewSet):
@@ -521,7 +666,7 @@ class ConsultationViewSet(ModelViewSet):
             }, status=status.HTTP_400_BAD_REQUEST)
         
         consultation.status = 'in_progress'
-        consultation.started_at = timezone.now()
+        consultation.actual_start_time = timezone.now()
         consultation.save()
         
         serializer = ConsultationSerializer(consultation)
@@ -548,7 +693,7 @@ class ConsultationViewSet(ModelViewSet):
             }, status=status.HTTP_400_BAD_REQUEST)
         
         consultation.status = 'completed'
-        consultation.ended_at = timezone.now()
+        consultation.actual_end_time = timezone.now()
         consultation.save()
         
         serializer = ConsultationSerializer(consultation)
@@ -860,8 +1005,23 @@ class ConsultationStatsView(APIView):
         """Get consultation statistics"""
         user = request.user
         
-        # Check permissions
-        if user.role not in ['admin', 'superadmin']:
+        # Apply role-based filtering
+        if user.role == 'doctor':
+            # Doctors can see their own consultations
+            base_queryset = Consultation.objects.filter(doctor=user)
+        elif user.role == 'admin':
+            try:
+                # Get the clinic that this admin is assigned to
+                assigned_clinic = user.administered_clinic
+                base_queryset = Consultation.objects.filter(clinic=assigned_clinic)
+            except:
+                # If admin is not assigned to any clinic, return empty stats
+                base_queryset = Consultation.objects.none()
+        elif user.role == 'superadmin':
+            # SuperAdmin can see all consultations
+            base_queryset = Consultation.objects.all()
+        else:
+            # Other roles get no access
             return Response({
                 'success': False,
                 'error': {
@@ -870,19 +1030,6 @@ class ConsultationStatsView(APIView):
                 },
                 'timestamp': timezone.now().isoformat()
             }, status=status.HTTP_403_FORBIDDEN)
-        
-        # Apply role-based filtering
-        if user.role == 'admin':
-            try:
-                # Get the clinic that this admin is assigned to
-                assigned_clinic = user.administered_clinic
-                base_queryset = Consultation.objects.filter(clinic=assigned_clinic)
-            except:
-                # If admin is not assigned to any clinic, return empty stats
-                base_queryset = Consultation.objects.none()
-        else:
-            # SuperAdmin can see all consultations
-            base_queryset = Consultation.objects.all()
         
         # Calculate statistics
         total_consultations = base_queryset.count()
@@ -899,20 +1046,19 @@ class ConsultationStatsView(APIView):
         
         # Average duration and rating
         completed_consultations_qs = base_queryset.filter(
-            status='completed', started_at__isnull=False, ended_at__isnull=False
+            status='completed', actual_start_time__isnull=False, actual_end_time__isnull=False
         )
         
         avg_duration = 0
         if completed_consultations_qs.exists():
             total_duration = sum([
-                (c.ended_at - c.started_at).total_seconds() / 60
+                (c.actual_end_time - c.actual_start_time).total_seconds() / 60
                 for c in completed_consultations_qs
             ])
             avg_duration = total_duration / completed_consultations_qs.count()
         
-        avg_rating = base_queryset.filter(
-            rating__isnull=False
-        ).aggregate(avg_rating=Avg('rating'))['avg_rating'] or 0
+        # Rating field doesn't exist in the model, so we'll set it to 0
+        avg_rating = 0
         
         # Revenue stats
         total_revenue = base_queryset.filter(
@@ -947,14 +1093,17 @@ class ConsultationStatsView(APIView):
         
         stats_data = {
             'total_consultations': total_consultations,
+            'scheduled_consultations': pending_consultations,  # Use pending as scheduled
             'completed_consultations': completed_consultations,
             'cancelled_consultations': cancelled_consultations,
-            'pending_consultations': pending_consultations,
-            'consultation_type_distribution': consultation_type_distribution,
-            'average_duration': avg_duration,
-            'average_rating': avg_rating,
-            'revenue_stats': revenue_stats,
-            'monthly_trends': monthly_trends
+            'total_revenue': total_revenue,
+            'consultation_trends': monthly_trends,
+            'doctor_consultation_stats': {
+                'average_duration': avg_duration,
+                'average_rating': avg_rating,
+                'consultation_type_distribution': consultation_type_distribution,
+                'revenue_stats': revenue_stats
+            }
         }
         
         serializer = ConsultationStatsSerializer(stats_data)
@@ -1595,6 +1744,50 @@ class DoctorConsultationViewSet(ModelViewSet):
             return ConsultationNoteSerializer
         return self.serializer_class
 
+    @extend_schema(
+        parameters=[
+            OpenApiParameter('status', OpenApiTypes.STR, description='Filter by consultation status (scheduled, in_progress, completed, cancelled)'),
+            OpenApiParameter('search', OpenApiTypes.STR, description='Search in patient name, phone, chief complaint, or symptoms'),
+            OpenApiParameter('ordering', OpenApiTypes.STR, description='Order by field (e.g., -scheduled_date, scheduled_time)'),
+            OpenApiParameter('page', OpenApiTypes.INT, description='Page number'),
+            OpenApiParameter('page_size', OpenApiTypes.INT, description='Number of items per page (max 100)'),
+        ],
+        responses={200: ConsultationListSerializer(many=True)},
+        description="List consultations for the logged-in doctor with filtering and pagination"
+    )
+    def list(self, request, *args, **kwargs):
+        """List consultations with filtering and pagination"""
+        queryset = self.get_queryset()
+        
+        # Apply status filter
+        status_filter = request.query_params.get('status')
+        if status_filter and status_filter != 'all':
+            queryset = queryset.filter(status=status_filter)
+        
+        # Apply search filter
+        search_term = request.query_params.get('search')
+        if search_term:
+            queryset = queryset.filter(
+                Q(patient__name__icontains=search_term) |
+                Q(patient__phone__icontains=search_term) |
+                Q(chief_complaint__icontains=search_term) |
+                Q(symptoms__icontains=search_term)
+            )
+        
+        # Apply ordering
+        ordering = request.query_params.get('ordering', '-scheduled_date')
+        if ordering:
+            queryset = queryset.order_by(ordering)
+        
+        # Apply pagination
+        page = self.paginate_queryset(queryset)
+        if page is not None:
+            serializer = self.get_serializer(page, many=True)
+            return self.get_paginated_response(serializer.data)
+        
+        serializer = self.get_serializer(queryset, many=True)
+        return Response(serializer.data)
+
     @action(detail=True, methods=['post'])
     def start(self, request, pk=None):
         """Start a consultation"""
@@ -1649,8 +1842,152 @@ class DoctorConsultationViewSet(ModelViewSet):
         """Get notes for a consultation"""
         consultation = self.get_object()
         notes = ConsultationNote.objects.filter(consultation=consultation)
-        serializer = self.get_serializer(notes, many=True)
+        serializer = ConsultationNoteSerializer(notes, many=True)
         return Response(serializer.data)
+
+    @action(detail=True, methods=['post'], url_path='vital-signs')
+    def add_vital_signs(self, request, pk=None):
+        """Add vital signs for a consultation"""
+        consultation = self.get_object()
+        
+        # Check if vital signs already exist
+        vital_signs, created = ConsultationVitalSigns.objects.get_or_create(
+            consultation=consultation,
+            defaults={'doctor': request.user}
+        )
+        
+        serializer = ConsultationVitalSignsCreateSerializer(vital_signs, data=request.data, partial=True)
+        if serializer.is_valid():
+            serializer.save()
+            return Response(serializer.data, status=status.HTTP_200_OK)
+        return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+
+    @action(detail=True, methods=['get'], url_path='vital-signs')
+    def get_vital_signs(self, request, pk=None):
+        """Get vital signs for a consultation"""
+        consultation = self.get_object()
+        try:
+            vital_signs = ConsultationVitalSigns.objects.get(consultation=consultation)
+            serializer = ConsultationVitalSignsSerializer(vital_signs)
+            return Response(serializer.data)
+        except ConsultationVitalSigns.DoesNotExist:
+            return Response({'message': 'No vital signs recorded yet'}, status=status.HTTP_404_NOT_FOUND)
+
+    @action(detail=True, methods=['post'], url_path='assessment')
+    def save_assessment(self, request, pk=None):
+        """Save consultation assessment"""
+        consultation = self.get_object()
+        
+        # Update consultation with assessment data
+        assessment_data = request.data.get('assessment', {})
+        if assessment_data:
+            consultation.chief_complaint = assessment_data.get('chief_complaint', consultation.chief_complaint)
+            consultation.symptoms = assessment_data.get('symptoms', consultation.symptoms)
+            consultation.save()
+        
+        # Save symptoms if provided
+        symptoms_data = request.data.get('symptoms', [])
+        if symptoms_data:
+            # Clear existing symptoms
+            ConsultationSymptom.objects.filter(consultation=consultation).delete()
+            
+            # Add new symptoms
+            for symptom_data in symptoms_data:
+                ConsultationSymptom.objects.create(
+                    consultation=consultation,
+                    symptom=symptom_data.get('symptom', ''),
+                    severity=symptom_data.get('severity', 'mild'),
+                    duration=symptom_data.get('duration', ''),
+                    doctor=request.user
+                )
+        
+        return Response({'message': 'Assessment saved successfully'}, status=status.HTTP_200_OK)
+
+    @action(detail=True, methods=['post'], url_path='diagnosis')
+    def save_diagnosis(self, request, pk=None):
+        """Save consultation diagnosis"""
+        consultation = self.get_object()
+        
+        # Save diagnosis
+        diagnosis_data = request.data.get('diagnosis', {})
+        if diagnosis_data:
+            diagnosis, created = ConsultationDiagnosis.objects.get_or_create(
+                consultation=consultation,
+                defaults={'doctor': request.user}
+            )
+            
+            diagnosis.primary_diagnosis = diagnosis_data.get('primary_diagnosis', '')
+            diagnosis.differential_diagnosis = diagnosis_data.get('differential_diagnosis', '')
+            diagnosis.clinical_findings = diagnosis_data.get('clinical_findings', '')
+            diagnosis.lab_results = diagnosis_data.get('lab_results', '')
+            diagnosis.imaging = diagnosis_data.get('imaging', '')
+            diagnosis.save()
+        
+        return Response({'message': 'Diagnosis saved successfully'}, status=status.HTTP_200_OK)
+
+    @action(detail=True, methods=['post'], url_path='prescription')
+    def save_prescription(self, request, pk=None):
+        """Save prescription for a consultation"""
+        consultation = self.get_object()
+        
+        try:
+            from prescriptions.models import Prescription
+            from prescriptions.serializers import PrescriptionCreateSerializer
+            
+            # Create or update prescription
+            prescription_data = request.data.get('prescription', {})
+            if prescription_data:
+                # Check if prescription already exists
+                prescription, created = Prescription.objects.get_or_create(
+                    consultation=consultation,
+                    defaults={
+                        'doctor': request.user,
+                        'patient': consultation.patient,
+                        'clinic': consultation.clinic
+                    }
+                )
+                
+                # Update prescription data
+                prescription.instructions = prescription_data.get('instructions', '')
+                prescription.follow_up = prescription_data.get('follow_up', '')
+                prescription.next_visit = prescription_data.get('next_visit', '')
+                prescription.diagnosis = prescription_data.get('diagnosis', '')
+                prescription.save()
+                
+                # Handle medications
+                medications_data = prescription_data.get('medications', [])
+                if medications_data:
+                    # Clear existing medications
+                    prescription.medicines.clear()
+                    
+                    # Add new medications
+                    for med_data in medications_data:
+                        from prescriptions.models import Medicine
+                        medicine, created = Medicine.objects.get_or_create(
+                            name=med_data.get('name', ''),
+                            defaults={
+                                'dosage': med_data.get('dosage', ''),
+                                'frequency': med_data.get('frequency', ''),
+                                'duration': med_data.get('duration', ''),
+                                'instructions': med_data.get('instructions', ''),
+                                'before_meal': med_data.get('before_meal', True),
+                                'is_generic': med_data.get('is_generic', False),
+                                'quantity': med_data.get('quantity', '')
+                            }
+                        )
+                        prescription.medicines.add(medicine)
+                
+                return Response({
+                    'message': 'Prescription saved successfully',
+                    'prescription_id': prescription.id
+                }, status=status.HTTP_200_OK)
+            
+            return Response({'error': 'No prescription data provided'}, status=status.HTTP_400_BAD_REQUEST)
+            
+        except ImportError:
+            return Response({'error': 'Prescription module not available'}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+        except Exception as e:
+            return Response({'error': str(e)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
 
     @action(detail=False, methods=['get'])
     def upcoming(self, request):
@@ -1680,6 +2017,296 @@ class DoctorConsultationViewSet(ModelViewSet):
 
         serializer = self.get_serializer(completed_consultations, many=True)
         return Response(serializer.data)
+
+    @action(detail=False, methods=['get'], url_path='real-time-updates')
+    def real_time_updates(self, request):
+        """Get real-time consultation updates for the logged-in doctor"""
+        try:
+            # Get recent consultations with updates
+            recent_consultations = ConsultationService.get_doctor_consultations(
+                doctor=request.user,
+                date_from=timezone.now().date() - timedelta(days=7)
+            )
+            
+            # Get today's consultations
+            today_consultations = ConsultationService.get_today_consultations(request.user)
+            
+            # Get upcoming consultations
+            upcoming_consultations = ConsultationService.get_upcoming_consultations(request.user, days=3)
+            
+            response_data = {
+                'recent_updates': ConsultationListSerializer(recent_consultations[:10], many=True).data,
+                'today_consultations': ConsultationListSerializer(today_consultations, many=True).data,
+                'upcoming_consultations': ConsultationListSerializer(upcoming_consultations, many=True).data,
+                'last_updated': timezone.now().isoformat()
+            }
+            
+            return Response({
+                'success': True,
+                'data': response_data,
+                'message': 'Real-time updates retrieved successfully'
+            }, status=status.HTTP_200_OK)
+            
+        except Exception as e:
+            return Response({
+                'success': False,
+                'error': str(e)
+            }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+
+    @action(detail=False, methods=['get'], url_path='analytics')
+    def analytics(self, request):
+        """Get consultation analytics for the logged-in doctor"""
+        try:
+            # Get date range from query parameters
+            days = int(request.query_params.get('days', 30))
+            end_date = timezone.now().date()
+            start_date = end_date - timedelta(days=days)
+            
+            # Get performance metrics
+            performance_metrics = ConsultationAnalyticsService.get_doctor_performance_metrics(
+                doctor=request.user,
+                start_date=start_date,
+                end_date=end_date
+            )
+            
+            # Get consultation trends
+            trends = ConsultationAnalyticsService.get_consultation_trends(
+                doctor=request.user,
+                days=days
+            )
+            
+            # Get revenue analytics
+            revenue_analytics = ConsultationAnalyticsService.get_revenue_analytics(
+                doctor=request.user,
+                start_date=start_date,
+                end_date=end_date
+            )
+            
+            response_data = {
+                'performance_metrics': performance_metrics,
+                'consultation_trends': trends,
+                'revenue_analytics': revenue_analytics,
+                'period': {
+                    'start_date': start_date.isoformat(),
+                    'end_date': end_date.isoformat(),
+                    'days': days
+                }
+            }
+            
+            return Response({
+                'success': True,
+                'data': response_data,
+                'message': 'Analytics retrieved successfully'
+            }, status=status.HTTP_200_OK)
+            
+        except Exception as e:
+            return Response({
+                'success': False,
+                'error': str(e)
+            }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+
+    @action(detail=True, methods=['post'], url_path='reschedule')
+    def reschedule_consultation(self, request, pk=None):
+        """Reschedule a consultation"""
+        try:
+            consultation = self.get_object()
+            
+            # Validate input data
+            new_date = request.data.get('new_date')
+            new_time = request.data.get('new_time')
+            reason = request.data.get('reason', '')
+            
+            if not new_date or not new_time:
+                return Response({
+                    'success': False,
+                    'error': 'New date and time are required'
+                }, status=status.HTTP_400_BAD_REQUEST)
+            
+            # Parse date and time
+            try:
+                new_date = datetime.strptime(new_date, '%Y-%m-%d').date()
+                new_time = datetime.strptime(new_time, '%H:%M:%S').time()
+            except ValueError:
+                return Response({
+                    'success': False,
+                    'error': 'Invalid date or time format'
+                }, status=status.HTTP_400_BAD_REQUEST)
+            
+            # Reschedule consultation
+            ConsultationService.reschedule_consultation(
+                consultation=consultation,
+                new_date=new_date,
+                new_time=new_time,
+                rescheduled_by=request.user,
+                reason=reason
+            )
+            
+            return Response({
+                'success': True,
+                'data': self.get_serializer(consultation).data,
+                'message': 'Consultation rescheduled successfully'
+            }, status=status.HTTP_200_OK)
+            
+        except ValidationError as e:
+            return Response({
+                'success': False,
+                'error': str(e)
+            }, status=status.HTTP_400_BAD_REQUEST)
+        except Exception as e:
+            return Response({
+                'success': False,
+                'error': str(e)
+            }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+
+    @action(detail=True, methods=['post'], url_path='bulk-actions')
+    def bulk_actions(self, request, pk=None):
+        """Perform bulk actions on consultations"""
+        try:
+            action_type = request.data.get('action')
+            consultation_ids = request.data.get('consultation_ids', [])
+            
+            if not action_type or not consultation_ids:
+                return Response({
+                    'success': False,
+                    'error': 'Action type and consultation IDs are required'
+                }, status=status.HTTP_400_BAD_REQUEST)
+            
+            consultations = Consultation.objects.filter(
+                id__in=consultation_ids,
+                doctor=request.user
+            )
+            
+            results = []
+            
+            if action_type == 'start':
+                for consultation in consultations:
+                    try:
+                        ConsultationService.start_consultation(consultation)
+                        results.append({
+                            'consultation_id': consultation.id,
+                            'status': 'success',
+                            'message': 'Consultation started'
+                        })
+                    except Exception as e:
+                        results.append({
+                            'consultation_id': consultation.id,
+                            'status': 'error',
+                            'message': str(e)
+                        })
+            
+            elif action_type == 'complete':
+                for consultation in consultations:
+                    try:
+                        ConsultationService.complete_consultation(consultation)
+                        results.append({
+                            'consultation_id': consultation.id,
+                            'status': 'success',
+                            'message': 'Consultation completed'
+                        })
+                    except Exception as e:
+                        results.append({
+                            'consultation_id': consultation.id,
+                            'status': 'error',
+                            'message': str(e)
+                        })
+            
+            elif action_type == 'cancel':
+                reason = request.data.get('reason', '')
+                for consultation in consultations:
+                    try:
+                        ConsultationService.cancel_consultation(
+                            consultation=consultation,
+                            cancelled_by=request.user,
+                            reason=reason
+                        )
+                        results.append({
+                            'consultation_id': consultation.id,
+                            'status': 'success',
+                            'message': 'Consultation cancelled'
+                        })
+                    except Exception as e:
+                        results.append({
+                            'consultation_id': consultation.id,
+                            'status': 'error',
+                            'message': str(e)
+                        })
+            
+            else:
+                return Response({
+                    'success': False,
+                    'error': 'Invalid action type'
+                }, status=status.HTTP_400_BAD_REQUEST)
+            
+            return Response({
+                'success': True,
+                'data': {
+                    'action_type': action_type,
+                    'results': results,
+                    'total_processed': len(results)
+                },
+                'message': f'Bulk action {action_type} completed'
+            }, status=status.HTTP_200_OK)
+            
+        except Exception as e:
+            return Response({
+                'success': False,
+                'error': str(e)
+            }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+
+    @action(detail=False, methods=['get'], url_path='dashboard-stats')
+    def dashboard_stats(self, request):
+        """Get dashboard statistics for the logged-in doctor"""
+        try:
+            today = timezone.now().date()
+            
+            # Get today's statistics
+            today_stats = ConsultationService.get_consultation_statistics(
+                doctor=request.user,
+                date_from=today,
+                date_to=today
+            )
+            
+            # Get this week's statistics
+            week_start = today - timedelta(days=today.weekday())
+            week_stats = ConsultationService.get_consultation_statistics(
+                doctor=request.user,
+                date_from=week_start,
+                date_to=today
+            )
+            
+            # Get this month's statistics
+            month_start = today.replace(day=1)
+            month_stats = ConsultationService.get_consultation_statistics(
+                doctor=request.user,
+                date_from=month_start,
+                date_to=today
+            )
+            
+            # Get upcoming consultations count
+            upcoming_count = ConsultationService.get_upcoming_consultations(
+                doctor=request.user,
+                days=7
+            ).count()
+            
+            response_data = {
+                'today': today_stats,
+                'this_week': week_stats,
+                'this_month': month_stats,
+                'upcoming_consultations': upcoming_count,
+                'last_updated': timezone.now().isoformat()
+            }
+            
+            return Response({
+                'success': True,
+                'data': response_data,
+                'message': 'Dashboard statistics retrieved successfully'
+            }, status=status.HTTP_200_OK)
+            
+        except Exception as e:
+            return Response({
+                'success': False,
+                'error': str(e)
+            }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
 
 @api_view(['POST'])
 @permission_classes([permissions.IsAuthenticated])

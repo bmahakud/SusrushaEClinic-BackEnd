@@ -105,9 +105,11 @@ class SendOTPSerializer(serializers.Serializer):
 
 
 class VerifyOTPSerializer(serializers.Serializer):
-    """Serializer for verifying OTP and login"""
+    """Serializer for verifying OTP and login/registration"""
     phone = serializers.CharField(max_length=17)
     otp = serializers.CharField(max_length=6)
+    purpose = serializers.ChoiceField(choices=OTP._meta.get_field('purpose').choices, default='login')
+    user_info = serializers.DictField(required=False)
     
     def validate_phone(self, value):
         """Validate phone number format"""
@@ -128,6 +130,8 @@ class VerifyOTPSerializer(serializers.Serializer):
         """Validate OTP and return user"""
         phone = attrs['phone']
         otp_code = attrs['otp']
+        purpose = attrs.get('purpose', 'login')
+        user_info = attrs.get('user_info', {})
 
         # Check if test mode is enabled
         test_mode = getattr(settings, 'OTP_TEST_MODE', False)
@@ -139,21 +143,35 @@ class VerifyOTPSerializer(serializers.Serializer):
                 user = User.objects.get(phone=phone)
                 if not user.is_active:
                     raise serializers.ValidationError('Account is deactivated. Please contact support.')
+                attrs['user'] = user
+                attrs['is_new_user'] = False
             except User.DoesNotExist:
-                raise serializers.ValidationError('No account found with this phone number. Please register first.')
-            
-            attrs['user'] = user
-            attrs['is_new_user'] = False
+                if purpose == 'registration':
+                    # Create new user for registration
+                    if not user_info.get('name'):
+                        raise serializers.ValidationError('Name is required for registration')
+                    
+                    user = User.objects.create_user(
+                        phone=phone,
+                        name=user_info['name'],
+                        role=user_info.get('role', 'patient'),
+                        date_of_birth=user_info.get('date_of_birth')
+                    )
+                    attrs['user'] = user
+                    attrs['is_new_user'] = True
+                else:
+                    raise serializers.ValidationError('No account found with this phone number. Please register first.')
             return attrs
 
         # Hash the provided OTP
         otp_hash = hashlib.sha256(otp_code.encode('utf-8')).hexdigest()
 
-        # Find valid OTP (by hash)
+        # Find valid OTP (by hash and purpose)
         try:
             otp = OTP.objects.get(
                 phone=phone,
                 otp=otp_hash,
+                purpose=purpose,
                 is_used=False,
                 expires_at__gt=timezone.now()
             )
@@ -164,16 +182,30 @@ class VerifyOTPSerializer(serializers.Serializer):
         otp.is_used = True
         otp.save()
 
-        # Get user (don't create for login)
+        # Handle user creation/retrieval based on purpose
         try:
             user = User.objects.get(phone=phone)
             if not user.is_active:
                 raise serializers.ValidationError('Account is deactivated. Please contact support.')
+            attrs['user'] = user
+            attrs['is_new_user'] = False
         except User.DoesNotExist:
-            raise serializers.ValidationError('No account found with this phone number. Please register first.')
+            if purpose == 'registration':
+                # Create new user for registration
+                if not user_info.get('name'):
+                    raise serializers.ValidationError('Name is required for registration')
+                
+                user = User.objects.create_user(
+                    phone=phone,
+                    name=user_info['name'],
+                    role=user_info.get('role', 'patient'),
+                    date_of_birth=user_info.get('date_of_birth')
+                )
+                attrs['user'] = user
+                attrs['is_new_user'] = True
+            else:
+                raise serializers.ValidationError('No account found with this phone number. Please register first.')
 
-        attrs['user'] = user
-        attrs['is_new_user'] = False
         return attrs
 
 

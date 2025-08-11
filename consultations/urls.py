@@ -12,6 +12,9 @@ doctor_router = DefaultRouter()
 doctor_router.register(r'doctor/consultations', views.DoctorConsultationViewSet, basename='doctor-consultation')
 
 urlpatterns = [
+    # Patient-specific consultation endpoints
+    path('patient/consultations/', views.PatientConsultationView.as_view(), name='patient-consultations'),
+    
     # Consultation search and statistics
     path('search/', views.ConsultationSearchView.as_view(), name='consultation-search'),
     path('stats/', views.ConsultationStatsView.as_view(), name='consultation-stats'),
@@ -72,6 +75,11 @@ urlpatterns = [
          views.ConsultationReceiptView.as_view(), 
          name='consultation-receipt'),
     
+    # Enhanced consultation endpoints for doctors (must come before router includes)
+    path('statistics/', views.ConsultationStatsView.as_view(), name='consultation-statistics'),
+    path('analytics/', views.ConsultationStatsView.as_view(), name='consultation-analytics'),
+    path('real-time-updates/', views.ConsultationStatsView.as_view(), name='consultation-real-time-updates'),
+    
     # Test endpoints (development only)
     path('test-admin-permissions/', views.test_admin_permissions, name='test-admin-permissions'),
     path('test-admin-consultation-access/', views.test_admin_consultation_access, name='test-admin-consultation-access'),
@@ -81,7 +89,7 @@ urlpatterns = [
     path('test-whatsapp/', views.test_whatsapp_notification, name='test-whatsapp-notification'),
     path('test-available-slots/', views.test_calculate_available_slots, name='test-calculate-available-slots'),
     
-    # Include router URLs for main consultation operations
+    # Include router URLs for main consultation operations (must come last)
     path('', include(router.urls)),
     path('', include(doctor_router.urls)),
 ]

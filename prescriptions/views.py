@@ -4,13 +4,18 @@ from rest_framework.response import Response
 from rest_framework.pagination import PageNumberPagination
 from django.db import models
 from django.utils import timezone
+from django.http import HttpResponse, Http404
+from django.conf import settings
 from drf_spectacular.utils import extend_schema, OpenApiParameter, OpenApiTypes
-from .models import Prescription, PrescriptionMedication, PrescriptionVitalSigns
+from .models import Prescription, PrescriptionMedication, PrescriptionVitalSigns, PrescriptionPDF
 from .serializers import (
     PrescriptionSerializer, PrescriptionCreateSerializer, PrescriptionUpdateSerializer,
     PrescriptionListSerializer, PrescriptionDetailSerializer, PrescriptionMedicationSerializer,
     PrescriptionVitalSignsSerializer
 )
+from .enhanced_pdf_generator import generate_prescription_pdf
+from utils.signed_urls import generate_signed_url
+import os
 
 class PrescriptionPagination(PageNumberPagination):
     """Custom pagination for prescription lists"""
@@ -20,12 +25,18 @@ class PrescriptionPagination(PageNumberPagination):
 
 class IsDoctorOrPatientOrAdmin(permissions.BasePermission):
     def has_permission(self, request, view):
-        # Allow all authenticated users to create prescriptions
-        if request.method == 'POST':
+        # Allow public access to verification endpoint
+        if view.action == 'verify_prescription':
+            return True
+        # Allow all authenticated users to create and update prescriptions
+        if request.method in ['POST', 'PUT', 'PATCH']:
             return request.user.is_authenticated
         return True
     
     def has_object_permission(self, request, view, obj):
+        # Allow public access to verification endpoint
+        if view.action == 'verify_prescription':
+            return True
         # Admin can do anything
         if request.user.role == 'superadmin':
             return True
@@ -205,6 +216,35 @@ class PrescriptionViewSet(viewsets.ModelViewSet):
     def update(self, request, pk=None):
         """Update prescription"""
         prescription = self.get_object()
+        serializer = self.get_serializer(prescription, data=request.data, partial=False)
+        if serializer.is_valid():
+            prescription = serializer.save()
+            response_serializer = PrescriptionDetailSerializer(prescription)
+            return Response({
+                'success': True,
+                'data': response_serializer.data,
+                'message': 'Prescription updated successfully',
+                'timestamp': timezone.now().isoformat()
+            }, status=status.HTTP_200_OK)
+        
+        return Response({
+            'success': False,
+            'error': {
+                'code': 'VALIDATION_ERROR',
+                'message': 'Invalid data provided',
+                'details': serializer.errors
+            },
+            'timestamp': timezone.now().isoformat()
+        }, status=status.HTTP_400_BAD_REQUEST)
+
+    @extend_schema(
+        request=PrescriptionUpdateSerializer,
+        responses={200: PrescriptionSerializer},
+        description="Partially update prescription"
+    )
+    def partial_update(self, request, pk=None):
+        """Partially update prescription"""
+        prescription = self.get_object()
         serializer = self.get_serializer(prescription, data=request.data, partial=True)
         if serializer.is_valid():
             prescription = serializer.save()
@@ -276,35 +316,164 @@ class PrescriptionViewSet(viewsets.ModelViewSet):
 
     @action(detail=True, methods=['post'])
     def finalize(self, request, pk=None):
-        """Finalize a prescription (mark as not draft)"""
+        """Finalize a prescription and generate PDF"""
         prescription = self.get_object()
-        prescription.is_draft = False
-        prescription.is_finalized = True
-        prescription.save()
         
-        serializer = PrescriptionDetailSerializer(prescription)
-        return Response({
-            'success': True,
-            'data': serializer.data,
-            'message': 'Prescription finalized successfully',
-            'timestamp': timezone.now().isoformat()
-        }, status=status.HTTP_200_OK)
+        # Only allow finalization if user is the doctor who created it
+        if request.user != prescription.doctor:
+            return Response({
+                'success': False,
+                'error': {
+                    'code': 'PERMISSION_DENIED',
+                    'message': 'Only the prescribing doctor can finalize prescriptions'
+                },
+                'timestamp': timezone.now().isoformat()
+            }, status=status.HTTP_403_FORBIDDEN)
+        
+        try:
+            # Update prescription with any final changes
+            if request.data:
+                serializer = PrescriptionUpdateSerializer(
+                    prescription, 
+                    data=request.data, 
+                    partial=True,
+                    context={'request': request}
+                )
+                if serializer.is_valid():
+                    prescription = serializer.save()
+                else:
+                    return Response({
+                        'success': False,
+                        'error': {
+                            'code': 'VALIDATION_ERROR',
+                            'message': 'Invalid data provided',
+                            'details': serializer.errors
+                        },
+                        'timestamp': timezone.now().isoformat()
+                    }, status=status.HTTP_400_BAD_REQUEST)
+            
+            # Finalize the prescription
+            prescription.is_draft = False
+            prescription.is_finalized = True
+            prescription.save()
+            
+            # Get header and footer images (use default paths or from request)
+            header_image_path = None
+            footer_image_path = None
+            
+            # Check for existing header/footer files
+            default_header = os.path.join(settings.MEDIA_ROOT, 'prescription_headers', 'test_prescription_header.png')
+            default_footer = os.path.join(settings.MEDIA_ROOT, 'prescription_footers', 'test_prescription_footer.png')
+            
+            if os.path.exists(default_header):
+                header_image_path = default_header
+            if os.path.exists(default_footer):
+                footer_image_path = default_footer
+            
+            # Generate PDF
+            pdf_instance = generate_prescription_pdf(
+                prescription=prescription,
+                user=request.user,
+                header_image_path=header_image_path,
+                footer_image_path=footer_image_path
+            )
+            
+            # Generate signed URL for the PDF file
+            pdf_url = None
+            if pdf_instance.pdf_file:
+                try:
+                    # Get the file key from the file path and ensure it includes AWS_LOCATION
+                    file_key = str(pdf_instance.pdf_file)
+                    if not file_key.startswith(f"{settings.AWS_LOCATION}/"):
+                        file_key = f"{settings.AWS_LOCATION}/{file_key}"
+                    
+                    # Add a small delay to allow the signal to upload the file to DigitalOcean Spaces
+                    import time
+                    time.sleep(2)
+                    
+                    # Generate signed URL - the signal should have uploaded the file by now
+                    pdf_url = generate_signed_url(file_key, expiration=3600)  # 1 hour expiration
+                    print(f"✅ Generated signed URL for PDF: {file_key}")
+                        
+                except Exception as e:
+                    print(f"Error generating signed URL for PDF: {e}")
+                    # Fallback to direct URL if signed URL generation fails
+                    pdf_url = pdf_instance.pdf_file.url if pdf_instance.pdf_file else None
+            
+            # Return response with PDF information
+            serializer = PrescriptionDetailSerializer(prescription)
+            return Response({
+                'success': True,
+                'data': {
+                    'prescription': serializer.data,
+                    'pdf': {
+                        'id': pdf_instance.id,
+                        'version': pdf_instance.version_number,
+                        'url': pdf_url,
+                        'generated_at': pdf_instance.generated_at.isoformat()
+                    }
+                },
+                'message': 'Prescription finalized and PDF generated successfully',
+                'timestamp': timezone.now().isoformat()
+            }, status=status.HTTP_200_OK)
+            
+        except Exception as e:
+            print(f"Error finalizing prescription: {e}")
+            return Response({
+                'success': False,
+                'error': {
+                    'code': 'INTERNAL_ERROR',
+                    'message': 'Error finalizing prescription and generating PDF'
+                },
+                'timestamp': timezone.now().isoformat()
+            }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
 
     @action(detail=True, methods=['post'])
     def save_draft(self, request, pk=None):
-        """Save prescription as draft"""
+        """Save prescription as draft with all data"""
         prescription = self.get_object()
-        prescription.is_draft = True
-        prescription.is_finalized = False
-        prescription.save()
         
-        serializer = PrescriptionDetailSerializer(prescription)
+        # Only allow save if user is the doctor who created it
+        if request.user != prescription.doctor:
+            return Response({
+                'success': False,
+                'error': {
+                    'code': 'PERMISSION_DENIED',
+                    'message': 'Only the prescribing doctor can save prescriptions'
+                },
+                'timestamp': timezone.now().isoformat()
+            }, status=status.HTTP_403_FORBIDDEN)
+        
+        # Update prescription data with request data
+        serializer = PrescriptionUpdateSerializer(
+            prescription, 
+            data=request.data, 
+            partial=True,
+            context={'request': request}
+        )
+        
+        if serializer.is_valid():
+            # Save the prescription data and ensure it's marked as draft
+            prescription = serializer.save(is_draft=True, is_finalized=False)
+            
+            # Return the updated prescription data
+            response_serializer = PrescriptionDetailSerializer(prescription)
+            return Response({
+                'success': True,
+                'data': response_serializer.data,
+                'message': 'Prescription saved as draft successfully',
+                'timestamp': timezone.now().isoformat()
+            }, status=status.HTTP_200_OK)
+        
         return Response({
-            'success': True,
-            'data': serializer.data,
-            'message': 'Prescription saved as draft',
+            'success': False,
+            'error': {
+                'code': 'VALIDATION_ERROR',
+                'message': 'Invalid data provided',
+                'details': serializer.errors
+            },
             'timestamp': timezone.now().isoformat()
-        }, status=status.HTTP_200_OK)
+        }, status=status.HTTP_400_BAD_REQUEST)
 
     @action(detail=False, methods=['get'])
     def drafts(self, request):
@@ -351,6 +520,446 @@ class PrescriptionViewSet(viewsets.ModelViewSet):
             'message': 'Finalized prescriptions retrieved successfully',
             'timestamp': timezone.now().isoformat()
         }, status=status.HTTP_200_OK)
+
+    @action(detail=True, methods=['post'], url_path='auto-save')
+    def auto_save(self, request, pk=None):
+        """Auto-save prescription data - used for draft auto-saving"""
+        prescription = self.get_object()
+        
+        # Only allow auto-save if user is the doctor who created it
+        if request.user != prescription.doctor:
+            return Response({
+                'success': False,
+                'error': {
+                    'code': 'PERMISSION_DENIED',
+                    'message': 'Only the prescribing doctor can auto-save'
+                },
+                'timestamp': timezone.now().isoformat()
+            }, status=status.HTTP_403_FORBIDDEN)
+        
+        # Update prescription data
+        serializer = PrescriptionUpdateSerializer(
+            prescription, 
+            data=request.data, 
+            partial=True,
+            context={'request': request}
+        )
+        
+        if serializer.is_valid():
+            # Ensure it remains as draft during auto-save
+            prescription = serializer.save(is_draft=True, is_finalized=False)
+            
+            # Return the updated prescription data
+            response_serializer = PrescriptionDetailSerializer(prescription)
+            return Response({
+                'success': True,
+                'data': response_serializer.data,
+                'message': 'Prescription auto-saved successfully',
+                'timestamp': timezone.now().isoformat()
+            }, status=status.HTTP_200_OK)
+        
+        return Response({
+            'success': False,
+            'error': {
+                'code': 'VALIDATION_ERROR',
+                'message': 'Invalid data provided',
+                'details': serializer.errors
+            },
+            'timestamp': timezone.now().isoformat()
+        }, status=status.HTTP_400_BAD_REQUEST)
+
+    @action(detail=True, methods=['post'], url_path='finalize-and-generate-pdf')
+    def finalize_and_generate_pdf(self, request, pk=None):
+        """Finalize prescription and generate PDF with versioning"""
+        prescription = self.get_object()
+        
+        # Only allow finalization if user is the doctor who created it
+        if request.user != prescription.doctor:
+            return Response({
+                'success': False,
+                'error': {
+                    'code': 'PERMISSION_DENIED',
+                    'message': 'Only the prescribing doctor can finalize prescriptions'
+                },
+                'timestamp': timezone.now().isoformat()
+            }, status=status.HTTP_403_FORBIDDEN)
+        
+        try:
+            # Update prescription with any final changes
+            if request.data:
+                serializer = PrescriptionUpdateSerializer(
+                    prescription, 
+                    data=request.data, 
+                    partial=True,
+                    context={'request': request}
+                )
+                if serializer.is_valid():
+                    prescription = serializer.save()
+                else:
+                    return Response({
+                        'success': False,
+                        'error': {
+                            'code': 'VALIDATION_ERROR',
+                            'message': 'Invalid data provided',
+                            'details': serializer.errors
+                        },
+                        'timestamp': timezone.now().isoformat()
+                    }, status=status.HTTP_400_BAD_REQUEST)
+            
+            # Finalize the prescription
+            prescription.is_draft = False
+            prescription.is_finalized = True
+            prescription.save()
+            
+            # Get header and footer images (use default paths or from request)
+            header_image_path = None
+            footer_image_path = None
+            
+            # Check for existing header/footer files
+            default_header = os.path.join(settings.MEDIA_ROOT, 'prescription_headers', 'test_prescription_header.png')
+            default_footer = os.path.join(settings.MEDIA_ROOT, 'prescription_footers', 'test_prescription_footer.png')
+            
+            if os.path.exists(default_header):
+                header_image_path = default_header
+            if os.path.exists(default_footer):
+                footer_image_path = default_footer
+            
+            # Generate PDF
+            pdf_instance = generate_prescription_pdf(
+                prescription=prescription,
+                user=request.user,
+                header_image_path=header_image_path,
+                footer_image_path=footer_image_path
+            )
+            
+            # Generate signed URL for the PDF file
+            pdf_url = None
+            if pdf_instance.pdf_file:
+                try:
+                    # Get the file key from the file path and ensure it includes AWS_LOCATION
+                    file_key = str(pdf_instance.pdf_file)
+                    if not file_key.startswith(f"{settings.AWS_LOCATION}/"):
+                        file_key = f"{settings.AWS_LOCATION}/{file_key}"
+                    
+                    # Add a small delay to allow the signal to upload the file to DigitalOcean Spaces
+                    import time
+                    time.sleep(2)
+                    
+                    # Generate signed URL - the signal should have uploaded the file by now
+                    pdf_url = generate_signed_url(file_key, expiration=3600)  # 1 hour expiration
+                    print(f"✅ Generated signed URL for PDF: {file_key}")
+                        
+                except Exception as e:
+                    print(f"Error generating signed URL for PDF: {e}")
+                    # Fallback to direct URL if signed URL generation fails
+                    pdf_url = pdf_instance.pdf_file.url if pdf_instance.pdf_file else None
+            
+            # Return response with PDF information
+            serializer = PrescriptionDetailSerializer(prescription)
+            return Response({
+                'success': True,
+                'data': {
+                    'prescription': serializer.data,
+                    'pdf': {
+                        'id': pdf_instance.id,
+                        'version': pdf_instance.version_number,
+                        'url': pdf_url,
+                        'generated_at': pdf_instance.generated_at.isoformat()
+                    }
+                },
+                'message': 'Prescription finalized and PDF generated successfully',
+                'timestamp': timezone.now().isoformat()
+            }, status=status.HTTP_200_OK)
+            
+        except Exception as e:
+            return Response({
+                'success': False,
+                'error': {
+                    'code': 'PDF_GENERATION_ERROR',
+                    'message': f'Failed to generate PDF: {str(e)}'
+                },
+                'timestamp': timezone.now().isoformat()
+            }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+
+    @action(detail=True, methods=['get'], url_path='pdf-versions')
+    def pdf_versions(self, request, pk=None):
+        """Get all PDF versions for a prescription"""
+        prescription = self.get_object()
+        
+        pdf_versions = PrescriptionPDF.objects.filter(
+            prescription=prescription
+        ).order_by('-version_number')
+        
+        versions_data = []
+        for pdf in pdf_versions:
+            # Generate signed URL for each PDF file
+            file_url = None
+            if pdf.pdf_file:
+                try:
+                    file_key = str(pdf.pdf_file)
+                    if not file_key.startswith(f"{settings.AWS_LOCATION}/"):
+                        file_key = f"{settings.AWS_LOCATION}/{file_key}"
+                    file_url = generate_signed_url(file_key, expiration=3600)  # 1 hour expiration
+                except Exception as e:
+                    print(f"Error generating signed URL for PDF version: {e}")
+                    file_url = pdf.pdf_file.url if pdf.pdf_file else None
+            
+            versions_data.append({
+                'id': pdf.id,
+                'version': pdf.version_number,
+                'is_current': pdf.is_current,
+                'generated_at': pdf.generated_at.isoformat(),
+                'generated_by': {
+                    'id': pdf.generated_by.id,
+                    'name': pdf.generated_by.name
+                },
+                'file_url': file_url,
+                'file_size': pdf.file_size
+            })
+        
+        return Response({
+            'success': True,
+            'data': {
+                'prescription_id': prescription.id,
+                'total_versions': len(versions_data),
+                'versions': versions_data
+            },
+            'message': 'PDF versions retrieved successfully',
+            'timestamp': timezone.now().isoformat()
+        }, status=status.HTTP_200_OK)
+
+    @action(detail=True, methods=['get'], url_path='pdf/(?P<version>[^/.]+)')
+    def download_pdf(self, request, pk=None, version=None):
+        """Download a specific version of prescription PDF"""
+        prescription = self.get_object()
+        
+        try:
+            if version == 'latest':
+                pdf_instance = PrescriptionPDF.objects.filter(
+                    prescription=prescription,
+                    is_current=True
+                ).first()
+            else:
+                pdf_instance = PrescriptionPDF.objects.get(
+                    prescription=prescription,
+                    version_number=int(version)
+                )
+            
+            if not pdf_instance or not pdf_instance.pdf_file:
+                raise Http404("PDF not found")
+            
+            # Check permissions
+            user = request.user
+            if not (user == prescription.doctor or 
+                   user == prescription.patient or 
+                   user.role in ['admin', 'superadmin']):
+                return Response({
+                    'success': False,
+                    'error': {
+                        'code': 'PERMISSION_DENIED',
+                        'message': 'You do not have permission to access this PDF'
+                    },
+                    'timestamp': timezone.now().isoformat()
+                }, status=status.HTTP_403_FORBIDDEN)
+            
+            # Generate signed URL for the PDF file
+            try:
+                file_key = str(pdf_instance.pdf_file)
+                if not file_key.startswith(f"{settings.AWS_LOCATION}/"):
+                    file_key = f"{settings.AWS_LOCATION}/{file_key}"
+                signed_url = generate_signed_url(file_key, expiration=3600)  # 1 hour expiration
+                
+                # Redirect to signed URL instead of serving file directly
+                response = Response({
+                    'success': True,
+                    'data': {
+                        'download_url': signed_url,
+                        'filename': f"prescription_{prescription.id}_v{pdf_instance.version_number}.pdf"
+                    },
+                    'message': 'PDF download URL generated successfully',
+                    'timestamp': timezone.now().isoformat()
+                }, status=status.HTTP_200_OK)
+                
+                # Add headers for direct download
+                response['Content-Disposition'] = f'attachment; filename="prescription_{prescription.id}_v{pdf_instance.version_number}.pdf"'
+                return response
+                
+            except Exception as e:
+                print(f"Error generating signed URL for download: {e}")
+                # Fallback to direct file serving
+                response = HttpResponse(
+                    pdf_instance.pdf_file.read(),
+                    content_type='application/pdf'
+                )
+                response['Content-Disposition'] = f'inline; filename="prescription_{prescription.id}_v{pdf_instance.version_number}.pdf"'
+                return response
+            
+        except (PrescriptionPDF.DoesNotExist, ValueError):
+            raise Http404("PDF version not found")
+
+    @action(detail=False, methods=['get'], url_path='patient/(?P<patient_id>[^/.]+)/pdfs')
+    def patient_pdfs(self, request, patient_id=None):
+        """Get all prescription PDFs for a specific patient"""
+        # Check permissions
+        user = request.user
+        if not (user.role in ['admin', 'superadmin'] or 
+               (user.role == 'patient' and str(user.id) == patient_id) or
+               user.role == 'doctor'):
+            return Response({
+                'success': False,
+                'error': {
+                    'code': 'PERMISSION_DENIED',
+                    'message': 'You do not have permission to access these PDFs'
+                },
+                'timestamp': timezone.now().isoformat()
+            }, status=status.HTTP_403_FORBIDDEN)
+        
+        # Get all prescription PDFs for the patient
+        pdf_instances = PrescriptionPDF.objects.filter(
+            prescription__patient_id=patient_id,
+            is_current=True  # Only get current versions
+        ).select_related('prescription', 'generated_by').order_by('-generated_at')
+        
+        pdfs_data = []
+        for pdf in pdf_instances:
+            # Generate signed URL for each PDF file
+            file_url = None
+            if pdf.pdf_file:
+                try:
+                    file_key = str(pdf.pdf_file)
+                    if not file_key.startswith(f"{settings.AWS_LOCATION}/"):
+                        file_key = f"{settings.AWS_LOCATION}/{file_key}"
+                    file_url = generate_signed_url(file_key, expiration=3600)  # 1 hour expiration
+                except Exception as e:
+                    print(f"Error generating signed URL for patient PDF: {e}")
+                    file_url = pdf.pdf_file.url if pdf.pdf_file else None
+            
+            pdfs_data.append({
+                'id': pdf.id,
+                'prescription_id': pdf.prescription.id,
+                'consultation_id': pdf.prescription.consultation.id if pdf.prescription.consultation else None,
+                'version': pdf.version_number,
+                'generated_at': pdf.generated_at.isoformat(),
+                'generated_by': {
+                    'id': pdf.generated_by.id,
+                    'name': pdf.generated_by.name
+                },
+                'file_url': file_url,
+                'file_size': pdf.file_size,
+                'prescription_date': pdf.prescription.issued_date.strftime('%Y-%m-%d'),
+                'diagnosis': pdf.prescription.primary_diagnosis
+            })
+        
+        return Response({
+            'success': True,
+            'data': {
+                'patient_id': patient_id,
+                'total_pdfs': len(pdfs_data),
+                'pdfs': pdfs_data
+            },
+            'message': 'Patient prescription PDFs retrieved successfully',
+            'timestamp': timezone.now().isoformat()
+        }, status=status.HTTP_200_OK)
+
+    @action(detail=False, methods=['get'], url_path='verify/(?P<prescription_id>[^/.]+)')
+    def verify_prescription(self, request, prescription_id=None):
+        """Public endpoint to verify prescription authenticity (no authentication required)"""
+        try:
+            # Get prescription by ID
+            prescription = Prescription.objects.select_related(
+                'doctor', 'patient', 'consultation'
+            ).prefetch_related('medications').get(id=prescription_id)
+            
+            # Get the latest PDF version
+            latest_pdf = PrescriptionPDF.objects.filter(prescription=prescription).order_by('-created_at').first()
+            
+            # Prepare verification data
+            verification_data = {
+                'prescription_id': prescription.id,
+                'consultation_id': prescription.consultation_id,
+                'issued_date': prescription.issued_date,
+                'issued_time': prescription.issued_time,
+                'is_finalized': prescription.is_finalized,
+                'is_draft': prescription.is_draft,
+                'doctor': {
+                    'name': prescription.doctor.name,
+                    'qualifications': getattr(prescription.doctor, 'qualifications', 'MBBS'),
+                    'specialization': getattr(prescription.doctor, 'specialization', 'Family Physician'),
+                },
+                'patient': {
+                    'name': prescription.patient.name,
+                    'age': self._calculate_age(getattr(prescription.patient, 'date_of_birth', None)),
+                    'gender': getattr(prescription.patient, 'gender', 'N/A'),
+                },
+                'medications_count': prescription.medications.count(),
+                'verification_status': 'VALID' if prescription.is_finalized else 'DRAFT',
+                'pdf_available': latest_pdf is not None,
+                'latest_pdf_version': latest_pdf.version_number if latest_pdf else None,
+                'verification_timestamp': timezone.now().isoformat(),
+            }
+            
+            # Check if request wants JSON (API call) or HTML (browser)
+            if request.headers.get('Accept') == 'application/json' or request.GET.get('format') == 'json':
+                return Response({
+                    'success': True,
+                    'data': verification_data,
+                    'message': 'Prescription verification successful',
+                    'timestamp': timezone.now().isoformat()
+                }, status=status.HTTP_200_OK)
+            else:
+                # Return HTML template for browser
+                from django.shortcuts import render
+                return render(request, 'prescription_verify.html', {
+                    'verification_data': verification_data,
+                    'prescription_id': prescription_id
+                })
+            
+        except Prescription.DoesNotExist:
+            if request.headers.get('Accept') == 'application/json' or request.GET.get('format') == 'json':
+                return Response({
+                    'success': False,
+                    'error': {
+                        'code': 'PRESCRIPTION_NOT_FOUND',
+                        'message': f'Prescription with ID {prescription_id} not found'
+                    },
+                    'timestamp': timezone.now().isoformat()
+                }, status=status.HTTP_404_NOT_FOUND)
+            else:
+                # Return HTML error page
+                from django.shortcuts import render
+                return render(request, 'prescription_verify.html', {
+                    'error': f'Prescription with ID {prescription_id} not found',
+                    'prescription_id': prescription_id
+                }, status=404)
+        except Exception as e:
+            if request.headers.get('Accept') == 'application/json' or request.GET.get('format') == 'json':
+                return Response({
+                    'success': False,
+                    'error': {
+                        'code': 'VERIFICATION_ERROR',
+                        'message': f'Failed to verify prescription: {str(e)}'
+                    },
+                    'timestamp': timezone.now().isoformat()
+                }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+            else:
+                # Return HTML error page
+                from django.shortcuts import render
+                return render(request, 'prescription_verify.html', {
+                    'error': f'Failed to verify prescription: {str(e)}',
+                    'prescription_id': prescription_id
+                }, status=500)
+
+    def _calculate_age(self, date_of_birth):
+        """Calculate age from date of birth"""
+        if not date_of_birth:
+            return "N/A"
+        
+        from datetime import datetime
+        today = datetime.now().date()
+        age = today.year - date_of_birth.year
+        if today.month < date_of_birth.month or (today.month == date_of_birth.month and today.day < date_of_birth.day):
+            age -= 1
+        return str(age)
 
 class PrescriptionMedicationViewSet(viewsets.ModelViewSet):
     """ViewSet for prescription medications"""

@@ -12,6 +12,9 @@ router.register(r'refunds', views.PaymentRefundViewSet, basename='payment-refund
 router.register(r'discounts', views.PaymentDiscountViewSet, basename='payment-discount')
 
 urlpatterns = [
+    # Patient-specific payment endpoints
+    path('patient/payments/', views.PatientPaymentsView.as_view(), name='patient-payments'),
+    
     # Payment search and statistics
     path('search/', views.PaymentSearchView.as_view(), name='payment-search'),
     path('stats/', views.PaymentStatsView.as_view(), name='payment-stats'),
@@ -25,12 +28,7 @@ urlpatterns = [
     # Discount validation
     path('validate-discount/', views.DiscountValidationView.as_view(), name='validate-discount'),
     
-    # Payment webhooks
-    path('webhook/', views.PaymentWebhookView.as_view(), name='payment-webhook'),
-
-    # Payment initiation (PhonePe etc.)
-    path('initiate/', views.PaymentInitiateView.as_view(), name='payment-initiate'),
-    # Include router URLs
+    # Include router URLs for main payment operations
     path('', include(router.urls)),
 ]
 

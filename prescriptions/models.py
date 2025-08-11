@@ -3,6 +3,8 @@ from django.conf import settings
 from django.core.validators import MinValueValidator, MaxValueValidator
 from django.utils import timezone
 from consultations.models import Consultation
+import uuid
+import os
 
 class Prescription(models.Model):
     """Enhanced prescription model matching the comprehensive prescription structure"""
@@ -70,6 +72,89 @@ class Prescription(models.Model):
 
     def __str__(self):
         return f"Prescription for {self.patient.name} by {self.doctor.name} on {self.issued_date}"
+
+
+def prescription_pdf_upload_path(instance, filename):
+    """Generate upload path for prescription PDFs"""
+    ext = filename.split('.')[-1]
+    filename = f"{uuid.uuid4().hex}.{ext}"
+    consultation_id = instance.prescription.consultation.id if instance.prescription.consultation else 'no-consultation'
+    return os.path.join('prescriptions', 'pdfs', str(consultation_id), filename)
+
+
+class PrescriptionPDF(models.Model):
+    """Model to store finalized prescription PDFs with versioning"""
+    
+    prescription = models.ForeignKey(
+        Prescription,
+        on_delete=models.CASCADE,
+        related_name='pdf_versions'
+    )
+    
+    # PDF File
+    pdf_file = models.FileField(
+        upload_to=prescription_pdf_upload_path,
+        help_text="Generated prescription PDF"
+    )
+    
+    # Version information
+    version_number = models.PositiveIntegerField(help_text="Version number of this prescription")
+    is_current = models.BooleanField(default=True, help_text="Whether this is the current version")
+    
+    # Generation details
+    generated_by = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.CASCADE,
+        related_name='generated_prescription_pdfs'
+    )
+    generated_at = models.DateTimeField(auto_now_add=True)
+    
+    # Header and Footer used for this PDF
+    header_image = models.ImageField(
+        upload_to='prescription_headers/',
+        null=True,
+        blank=True,
+        help_text="Header image used for this PDF"
+    )
+    footer_image = models.ImageField(
+        upload_to='prescription_footers/',
+        null=True,
+        blank=True,
+        help_text="Footer image used for this PDF"
+    )
+    
+    # Metadata
+    file_size = models.PositiveIntegerField(null=True, blank=True, help_text="File size in bytes")
+    checksum = models.CharField(max_length=64, blank=True, help_text="MD5 checksum of the file")
+    
+    class Meta:
+        db_table = 'prescription_pdfs'
+        verbose_name = 'Prescription PDF'
+        verbose_name_plural = 'Prescription PDFs'
+        ordering = ['-version_number', '-generated_at']
+        unique_together = ['prescription', 'version_number']
+    
+    def __str__(self):
+        return f"Prescription PDF v{self.version_number} for {self.prescription}"
+    
+    def save(self, *args, **kwargs):
+        # Set version number if not set
+        if not self.version_number:
+            last_version = PrescriptionPDF.objects.filter(
+                prescription=self.prescription
+            ).order_by('-version_number').first()
+            
+            self.version_number = (last_version.version_number + 1) if last_version else 1
+        
+        # Mark other versions as not current if this is current
+        if self.is_current:
+            PrescriptionPDF.objects.filter(
+                prescription=self.prescription
+            ).exclude(
+                id=self.id
+            ).update(is_current=False)
+        
+        super().save(*args, **kwargs)
 
 class PrescriptionMedication(models.Model):
     """Individual medications in a prescription"""

@@ -121,8 +121,22 @@ class Consultation(models.Model):
             # Generate consultation ID
             last_consultation = Consultation.objects.order_by('id').last()
             if last_consultation:
-                last_number = int(last_consultation.id[3:])
-                new_number = last_number + 1
+                # Handle different ID formats safely
+                try:
+                    if last_consultation.id.startswith('CON'):
+                        last_number = int(last_consultation.id[3:])
+                    else:
+                        # If it doesn't start with CON, find the highest CON number
+                        con_consultations = Consultation.objects.filter(id__startswith='CON').order_by('id')
+                        if con_consultations.exists():
+                            last_con = con_consultations.last()
+                            last_number = int(last_con.id[3:])
+                        else:
+                            last_number = 0
+                    new_number = last_number + 1
+                except (ValueError, IndexError):
+                    # If parsing fails, start from 1
+                    new_number = 1
             else:
                 new_number = 1
             

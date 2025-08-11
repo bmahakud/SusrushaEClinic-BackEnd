@@ -1281,6 +1281,221 @@ class SuperAdminDoctorAnalyticsView(APIView):
         }, status=status.HTTP_200_OK)
 
 
+class DoctorEarningsView(APIView):
+    """Get comprehensive earnings analytics for doctors"""
+    permission_classes = [permissions.IsAuthenticated]
+    
+    @extend_schema(
+        parameters=[
+            OpenApiParameter('period', OpenApiTypes.STR, description='Period: week, month, year', default='month'),
+            OpenApiParameter('start_date', OpenApiTypes.DATE, description='Start date for filtering'),
+            OpenApiParameter('end_date', OpenApiTypes.DATE, description='End date for filtering'),
+        ],
+        responses={200: dict},
+        description="Get comprehensive earnings analytics for doctor dashboard"
+    )
+    def get(self, request):
+        """Get doctor earnings analytics"""
+        # Check if user is a doctor
+        if request.user.role != 'doctor':
+            return Response({
+                'success': False,
+                'error': {
+                    'code': 'PERMISSION_DENIED',
+                    'message': 'Only doctors can access earnings data'
+                },
+                'timestamp': timezone.now().isoformat()
+            }, status=status.HTTP_403_FORBIDDEN)
+        
+        # Get query parameters
+        period = request.query_params.get('period', 'month')
+        start_date = request.query_params.get('start_date')
+        end_date = request.query_params.get('end_date')
+        
+        # Set date range
+        today = timezone.now().date()
+        if period == 'week':
+            start_date = today - timedelta(days=7)
+            end_date = today
+        elif period == 'month':
+            start_date = today - timedelta(days=30)
+            end_date = today
+        elif period == 'year':
+            start_date = today - timedelta(days=365)
+            end_date = today
+        else:
+            # Use provided dates or default to current month
+            if not start_date:
+                start_date = today.replace(day=1)
+            if not end_date:
+                end_date = today
+        
+        # Convert string dates to date objects
+        if isinstance(start_date, str):
+            start_date = datetime.strptime(start_date, '%Y-%m-%d').date()
+        if isinstance(end_date, str):
+            end_date = datetime.strptime(end_date, '%Y-%m-%d').date()
+        
+        # Get doctor's payments
+        doctor_payments = Payment.objects.filter(
+            doctor=request.user,
+            status='completed',
+            processed_at__date__range=[start_date, end_date]
+        )
+        
+        # Calculate earnings overview
+        total_earnings = doctor_payments.aggregate(
+            total=Sum('amount')
+        )['total'] or 0
+        
+        total_consultations = doctor_payments.count()
+        
+        avg_per_consultation = 0
+        if total_consultations > 0:
+            avg_per_consultation = float(total_earnings) / total_consultations
+        
+        # Calculate growth compared to previous period
+        previous_start = start_date - (end_date - start_date)
+        previous_end = start_date
+        
+        previous_payments = Payment.objects.filter(
+            doctor=request.user,
+            status='completed',
+            processed_at__date__range=[previous_start, previous_end]
+        )
+        
+        previous_earnings = previous_payments.aggregate(
+            total=Sum('amount')
+        )['total'] or 0
+        
+        earnings_growth = 0
+        if previous_earnings > 0:
+            earnings_growth = ((float(total_earnings) - float(previous_earnings)) / float(previous_earnings)) * 100
+        
+        # Monthly breakdown (last 6 months)
+        monthly_breakdown = []
+        for i in range(6):
+            month_start = today.replace(day=1) - timedelta(days=30*i)
+            month_end = (month_start + timedelta(days=32)).replace(day=1) - timedelta(days=1)
+            
+            month_payments = Payment.objects.filter(
+                doctor=request.user,
+                status='completed',
+                processed_at__date__range=[month_start, month_end]
+            )
+            
+            month_earnings = month_payments.aggregate(
+                total=Sum('amount')
+            )['total'] or 0
+            
+            month_consultations = month_payments.count()
+            
+            # Calculate growth compared to previous month
+            prev_month_start = month_start - timedelta(days=30)
+            prev_month_end = month_start - timedelta(days=1)
+            
+            prev_month_payments = Payment.objects.filter(
+                doctor=request.user,
+                status='completed',
+                processed_at__date__range=[prev_month_start, prev_month_end]
+            )
+            
+            prev_month_earnings = prev_month_payments.aggregate(
+                total=Sum('amount')
+            )['total'] or 0
+            
+            month_growth = 0
+            if prev_month_earnings > 0:
+                month_growth = ((float(month_earnings) - float(prev_month_earnings)) / float(prev_month_earnings)) * 100
+            
+            monthly_breakdown.append({
+                'month': month_start.strftime('%B %Y'),
+                'month_key': month_start.strftime('%Y-%m'),
+                'earnings': float(month_earnings),
+                'consultations': month_consultations,
+                'growth': month_growth,
+                'growth_type': 'positive' if month_growth >= 0 else 'negative'
+            })
+        
+        # Payment status breakdown
+        all_payments = Payment.objects.filter(doctor=request.user)
+        
+        received_payments = all_payments.filter(
+            status='completed',
+            processed_at__date__gte=today - timedelta(days=30)
+        ).aggregate(total=Sum('amount'))['total'] or 0
+        
+        pending_payments = all_payments.filter(
+            status='pending'
+        ).aggregate(total=Sum('amount'))['total'] or 0
+        
+        processing_payments = all_payments.filter(
+            status='processing'
+        ).aggregate(total=Sum('amount'))['total'] or 0
+        
+        # Next payout calculation (simplified - could be enhanced with actual payout logic)
+        next_payout_amount = pending_payments + processing_payments
+        next_payout_date = (today + timedelta(days=15)).strftime('%d %B %Y')
+        
+        # Payment method distribution
+        payment_methods = dict(
+            doctor_payments.values('payment_method').annotate(
+                total=Sum('amount')
+            ).values_list('payment_method', 'total')
+        )
+        
+        # Recent transactions
+        recent_transactions = list(
+            doctor_payments.select_related('patient', 'consultation')
+            .order_by('-processed_at')[:10]
+            .values(
+                'id', 'amount', 'payment_method', 'status', 'processed_at',
+                'patient__name', 'consultation__consultation_type'
+            )
+        )
+        
+        # Format recent transactions
+        for transaction in recent_transactions:
+            transaction['amount'] = float(transaction['amount'])
+            transaction['processed_at'] = transaction['processed_at'].strftime('%Y-%m-%d %H:%M')
+            transaction['patient_name'] = transaction['patient__name']
+            transaction['consultation_type'] = transaction['consultation__consultation_type']
+            del transaction['patient__name']
+            del transaction['consultation__consultation_type']
+        
+        earnings_data = {
+            'overview': {
+                'total_earnings': float(total_earnings),
+                'total_consultations': total_consultations,
+                'avg_per_consultation': round(avg_per_consultation, 2),
+                'earnings_growth': round(earnings_growth, 2),
+                'growth_type': 'positive' if earnings_growth >= 0 else 'negative'
+            },
+            'monthly_breakdown': monthly_breakdown,
+            'payment_status': {
+                'received_payments': float(received_payments),
+                'pending_payments': float(pending_payments),
+                'processing_payments': float(processing_payments),
+                'next_payout_amount': float(next_payout_amount),
+                'next_payout_date': next_payout_date
+            },
+            'payment_methods': {k: float(v) for k, v in payment_methods.items()},
+            'recent_transactions': recent_transactions,
+            'period': {
+                'start_date': start_date.strftime('%Y-%m-%d'),
+                'end_date': end_date.strftime('%Y-%m-%d'),
+                'period_type': period
+            }
+        }
+        
+        return Response({
+            'success': True,
+            'data': earnings_data,
+            'message': 'Doctor earnings data retrieved successfully',
+            'timestamp': timezone.now().isoformat()
+        }, status=status.HTTP_200_OK)
+
+
 class DetailedAnalyticsView(APIView):
     """Get detailed analytics for admin dashboard"""
     permission_classes = [permissions.IsAuthenticated]

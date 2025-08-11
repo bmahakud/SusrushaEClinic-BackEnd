@@ -9,6 +9,9 @@ router = DefaultRouter()
 router.register(r'', views.PatientProfileViewSet, basename='patient-profile')
 
 urlpatterns = [
+    # Patient-specific endpoints for dashboard
+    path('medical-records/', views.PatientMedicalRecordsView.as_view(), name='patient-medical-records'),
+    
     # Patient search and statistics
     path('search/', views.PatientSearchView.as_view(), name='patient-search'),
     path('stats/', views.PatientStatsView.as_view(), name='patient-stats'),

@@ -17,6 +17,9 @@ urlpatterns = [
     path('real-time/', views.RealTimeMetricsView.as_view(), name='real-time-metrics'),
     path('superadmin/overview/', views.SuperAdminOverviewStatsView.as_view(), name='superadmin-overview-stats'),
     
+    # Doctor-specific analytics
+    path('doctor/earnings/', views.DoctorEarningsView.as_view(), name='doctor-earnings'),
+    
     # SuperAdmin comprehensive analytics
     path('superadmin/comprehensive/', views.SuperAdminComprehensiveAnalyticsView.as_view(), name='superadmin-comprehensive-analytics'),
     path('superadmin/revenue/', views.SuperAdminRevenueAnalyticsView.as_view(), name='superadmin-revenue-analytics'),
@@ -35,7 +38,7 @@ urlpatterns = [
     path('custom-report/', views.CustomReportView.as_view(), name='custom-report'),
     path('export/', views.ExportDataView.as_view(), name='export-data'),
     
-    # Include router URLs
+    # ViewSet routes
     path('', include(router.urls)),
 ]
 
