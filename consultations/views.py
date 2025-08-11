@@ -287,6 +287,7 @@ class ConsultationViewSet(ModelViewSet):
             OpenApiParameter('upcoming', OpenApiTypes.BOOL, description='Filter upcoming consultations only'),
             OpenApiParameter('status', OpenApiTypes.STR, description='Filter by status'),
             OpenApiParameter('payment_status', OpenApiTypes.STR, description='Filter by payment status'),
+            OpenApiParameter('clinic_id', OpenApiTypes.STR, description='Filter by clinic ID'),
         ],
         responses={200: ConsultationListSerializer(many=True)},
         description="List all consultations with pagination and filtering"
@@ -294,6 +295,11 @@ class ConsultationViewSet(ModelViewSet):
     def list(self, request):
         """List consultations with pagination and filtering"""
         queryset = self.filter_queryset(self.get_queryset())
+        
+        # Filter by clinic_id (for superadmin and admin users)
+        clinic_id = request.query_params.get('clinic_id')
+        if clinic_id and request.user.role in ['superadmin', 'admin']:
+            queryset = queryset.filter(clinic_id=clinic_id)
         
         # Filter upcoming consultations
         upcoming_only = request.query_params.get('upcoming', '').lower() == 'true'
@@ -486,6 +492,86 @@ class ConsultationViewSet(ModelViewSet):
             'success': True,
             'data': serializer.data,
             'message': f'Available slots for {date}',
+            'timestamp': timezone.now().isoformat()
+        }, status=status.HTTP_200_OK)
+
+    @extend_schema(
+        parameters=[
+            OpenApiParameter('clinic_id', OpenApiTypes.STR, description='Clinic ID to filter consultations', required=True),
+            OpenApiParameter('status', OpenApiTypes.STR, description='Filter by consultation status'),
+            OpenApiParameter('payment_status', OpenApiTypes.STR, description='Filter by payment status'),
+            OpenApiParameter('page', OpenApiTypes.INT, description='Page number'),
+            OpenApiParameter('page_size', OpenApiTypes.INT, description='Number of items per page'),
+        ],
+        responses={200: ConsultationListSerializer(many=True)},
+        description="Get consultations for a specific clinic"
+    )
+    @action(detail=False, methods=['get'], url_path='clinic/(?P<clinic_id>[^/.]+)')
+    def clinic_consultations(self, request, clinic_id=None):
+        """Get consultations for a specific clinic"""
+        if not clinic_id:
+            return Response({
+                'success': False,
+                'error': {
+                    'code': 'MISSING_CLINIC_ID',
+                    'message': 'clinic_id parameter is required'
+                },
+                'timestamp': timezone.now().isoformat()
+            }, status=status.HTTP_400_BAD_REQUEST)
+        
+        # Check if user has permission to access this clinic
+        user = request.user
+        if user.role == 'admin':
+            # Admin can only access their assigned clinic
+            try:
+                if not hasattr(user, 'administered_clinic') or user.administered_clinic.id != clinic_id:
+                    return Response({
+                        'success': False,
+                        'error': {
+                            'code': 'PERMISSION_DENIED',
+                            'message': 'You can only access consultations for your assigned clinic'
+                        },
+                        'timestamp': timezone.now().isoformat()
+                    }, status=status.HTTP_403_FORBIDDEN)
+            except:
+                return Response({
+                    'success': False,
+                    'error': {
+                        'code': 'PERMISSION_DENIED',
+                        'message': 'You can only access consultations for your assigned clinic'
+                    },
+                    'timestamp': timezone.now().isoformat()
+                }, status=status.HTTP_403_FORBIDDEN)
+        
+        # Get consultations for the specific clinic
+        queryset = Consultation.objects.filter(clinic_id=clinic_id).select_related('patient', 'doctor', 'clinic')
+        
+        # Apply additional filters
+        status_filter = request.query_params.get('status')
+        if status_filter:
+            queryset = queryset.filter(status=status_filter)
+        
+        payment_status_filter = request.query_params.get('payment_status')
+        if payment_status_filter:
+            queryset = queryset.filter(payment_status=payment_status_filter)
+        
+        # Apply pagination
+        page = self.paginate_queryset(queryset)
+        
+        if page is not None:
+            serializer = self.get_serializer(page, many=True)
+            return self.get_paginated_response({
+                'success': True,
+                'data': serializer.data,
+                'message': f'Consultations for clinic {clinic_id} retrieved successfully',
+                'timestamp': timezone.now().isoformat()
+            })
+        
+        serializer = self.get_serializer(queryset, many=True)
+        return Response({
+            'success': True,
+            'data': serializer.data,
+            'message': f'Consultations for clinic {clinic_id} retrieved successfully',
             'timestamp': timezone.now().isoformat()
         }, status=status.HTTP_200_OK)
 
