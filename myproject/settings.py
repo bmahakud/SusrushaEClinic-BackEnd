@@ -390,7 +390,7 @@ MSG91_AUTHKEY = os.environ.get('MSG91_AUTHKEY', '416664AgVFnjJ8nhio65d6fc7bP1')
 MSG91_TEMPLATE_ID = os.environ.get('MSG91_TEMPLATE_ID', '65e07756d6fc0556a35f7052')
 
 # === DigitalOcean Spaces / S3-Compatible Storage Configuration ===
-ALWAYS_UPLOAD_FILES_TO_AWS = False  # Set to False for local deployment
+ALWAYS_UPLOAD_FILES_TO_AWS = True  # Set to True to enable DigitalOcean Spaces upload
 
 # AWS Configuration (needed for both modes)
 AWS_ACCESS_KEY_ID = 'UCW66UXZOVY3QVYQLSEK'

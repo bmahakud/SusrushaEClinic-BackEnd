@@ -102,4 +102,7 @@ def is_signed_url(url):
     Returns:
         bool: True if it's a signed URL, False otherwise
     """
-    return 'AWSAccessKeyId=' in url and 'Signature=' in url and 'Expires=' in url 
+    # Check for both old and new AWS SDK signed URL formats
+    old_format = 'AWSAccessKeyId=' in url and 'Signature=' in url and 'Expires=' in url
+    new_format = 'X-Amz-Algorithm=' in url and 'X-Amz-Signature=' in url and 'X-Amz-Date=' in url
+    return old_format or new_format 
