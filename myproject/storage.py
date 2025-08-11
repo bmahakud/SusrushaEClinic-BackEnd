@@ -7,7 +7,6 @@ from django.conf import settings
 
 class MediaStorage(S3Boto3Storage):
     """Custom storage for media files"""
-    location = settings.AWS_LOCATION
     file_overwrite = False
     default_acl = 'public-read'
     
@@ -17,10 +16,10 @@ class MediaStorage(S3Boto3Storage):
         self.bucket_name = settings.AWS_STORAGE_BUCKET_NAME
         self.endpoint_url = settings.AWS_S3_ENDPOINT_URL
         self.region_name = settings.AWS_S3_REGION_NAME
+        self.location = getattr(settings, 'AWS_LOCATION', 'edrcontainer1')
 
 class StaticStorage(S3Boto3Storage):
     """Custom storage for static files"""
-    location = f"{settings.AWS_LOCATION}/static"
     file_overwrite = True
     default_acl = 'public-read'
     
@@ -29,4 +28,5 @@ class StaticStorage(S3Boto3Storage):
         # Force S3 storage configuration
         self.bucket_name = settings.AWS_STORAGE_BUCKET_NAME
         self.endpoint_url = settings.AWS_S3_ENDPOINT_URL
-        self.region_name = settings.AWS_S3_REGION_NAME 
+        self.region_name = settings.AWS_S3_REGION_NAME
+        self.location = f"{getattr(settings, 'AWS_LOCATION', 'edrcontainer1')}/static" 
