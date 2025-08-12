@@ -9,6 +9,9 @@ router = DefaultRouter()
 router.register(r'', views.ClinicViewSet, basename='clinic')
 
 urlpatterns = [
+    # Public endpoints
+    path('public/', views.PublicClinicView.as_view(), name='public-clinics'),
+    
     # Clinic search and statistics
     path('search/', views.ClinicSearchView.as_view(), name='clinic-search'),
     path('stats/', views.ClinicStatsView.as_view(), name='clinic-stats'),

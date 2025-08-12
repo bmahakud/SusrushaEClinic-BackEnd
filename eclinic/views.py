@@ -1043,6 +1043,90 @@ class ClinicAnalyticsView(APIView):
             }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
 
 
+class PublicClinicView(APIView):
+    """Public endpoint for viewing e-clinics"""
+    permission_classes = [permissions.AllowAny]
+    
+    @extend_schema(
+        parameters=[
+            OpenApiParameter('page', OpenApiTypes.INT, description='Page number', default=1),
+            OpenApiParameter('page_size', OpenApiTypes.INT, description='Items per page', default=20),
+            OpenApiParameter('search', OpenApiTypes.STR, description='Search query'),
+            OpenApiParameter('city', OpenApiTypes.STR, description='Filter by city'),
+            OpenApiParameter('state', OpenApiTypes.STR, description='Filter by state'),
+            OpenApiParameter('is_verified', OpenApiTypes.STR, description='Filter by verification status'),
+            OpenApiParameter('is_active', OpenApiTypes.STR, description='Filter by active status'),
+        ],
+        responses={200: ClinicSerializer(many=True)},
+        description="Get public list of e-clinics"
+    )
+    def get(self, request):
+        """Get public list of e-clinics"""
+        try:
+            # Get query parameters
+            page = int(request.query_params.get('page', 1))
+            page_size = int(request.query_params.get('page_size', 20))
+            search = request.query_params.get('search', '')
+            city = request.query_params.get('city', '')
+            state = request.query_params.get('state', '')
+            is_verified = request.query_params.get('is_verified', '')
+            is_active = request.query_params.get('is_active', '')
+            
+            # Build queryset
+            queryset = Clinic.objects.filter(is_active=True)
+            
+            # Apply filters
+            if search:
+                queryset = queryset.filter(
+                    Q(name__icontains=search) |
+                    Q(description__icontains=search) |
+                    Q(city__icontains=search) |
+                    Q(specialties__icontains=search)
+                )
+            
+            if city:
+                queryset = queryset.filter(city__icontains=city)
+            
+            if state:
+                queryset = queryset.filter(state__icontains=state)
+            
+            if is_verified:
+                queryset = queryset.filter(is_verified=is_verified.lower() == 'true')
+            
+            if is_active:
+                queryset = queryset.filter(is_active=is_active.lower() == 'true')
+            
+            # Pagination
+            start = (page - 1) * page_size
+            end = start + page_size
+            total_count = queryset.count()
+            clinics = queryset[start:end]
+            
+            serializer = ClinicSerializer(clinics, many=True)
+            
+            return Response({
+                'success': True,
+                'data': {
+                    'results': serializer.data,
+                    'count': total_count,
+                    'next': f'?page={page + 1}&page_size={page_size}' if end < total_count else None,
+                    'previous': f'?page={page - 1}&page_size={page_size}' if page > 1 else None,
+                },
+                'message': 'E-clinics retrieved successfully',
+                'timestamp': timezone.now().isoformat()
+            }, status=status.HTTP_200_OK)
+            
+        except Exception as e:
+            return Response({
+                'success': False,
+                'error': {
+                    'code': 'FETCH_ERROR',
+                    'message': f'Failed to fetch e-clinics: {str(e)}'
+                },
+                'timestamp': timezone.now().isoformat()
+            }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+
+
 class NearbyClinicView(APIView):
     """Find nearby clinics"""
     permission_classes = [permissions.IsAuthenticated]
