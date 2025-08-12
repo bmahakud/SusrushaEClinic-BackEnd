@@ -18,6 +18,13 @@ from .models import ClinicService, ClinicInventory, ClinicAppointment, ClinicRev
 from .serializers import ClinicServiceSerializer, ClinicInventorySerializer, ClinicAppointmentSerializer, ClinicReviewSerializer, ClinicDocumentSerializer
 from .serializers import ClinicServiceCreateSerializer, ClinicInventoryCreateSerializer, ClinicAppointmentCreateSerializer, ClinicReviewCreateSerializer, ClinicDocumentCreateSerializer
 from .serializers import ClinicSearchSerializer
+from prescriptions.models import PrescriptionMedication
+from .serializers import (
+    GlobalMedicationSerializer, GlobalMedicationCreateSerializer, GlobalMedicationSearchSerializer
+)
+from .models import (
+    GlobalMedication
+)
 
 
 class ClinicPagination(PageNumberPagination):
@@ -76,6 +83,141 @@ class ClinicServiceViewSet(ModelViewSet):
         if self.action == 'create':
             return ClinicServiceCreateSerializer
         return ClinicServiceSerializer
+    
+    def perform_create(self, serializer):
+        """Set clinic_id when creating service"""
+        clinic_id = self.kwargs.get('clinic_id')
+        serializer.save(clinic_id=clinic_id)
+
+
+class GlobalMedicationViewSet(ModelViewSet):
+    """ViewSet for global medication management (Super Admin only)"""
+    permission_classes = [permissions.IsAuthenticated]
+    serializer_class = GlobalMedicationSerializer
+    
+    def get_queryset(self):
+        """Get all global medications"""
+        return GlobalMedication.objects.filter(is_active=True)
+    
+    def get_serializer_class(self):
+        """Return appropriate serializer based on action"""
+        if self.action == 'create':
+            return GlobalMedicationCreateSerializer
+        return GlobalMedicationSerializer
+    
+    def get_permissions(self):
+        """Only super admin can manage global medications"""
+        if self.request.user.role != 'superadmin':
+            return [permissions.IsAuthenticated()]
+        return super().get_permissions()
+    
+    @action(detail=False, methods=['get'], url_path='search')
+    def search_medications(self, request):
+        """Search global medications"""
+        query = request.query_params.get('q', '').strip()
+        limit = int(request.query_params.get('limit', 20))
+        
+        if not query:
+            return Response({
+                'success': False,
+                'error': {
+                    'code': 'MISSING_QUERY',
+                    'message': 'Search query is required'
+                },
+                'timestamp': timezone.now().isoformat()
+            }, status=status.HTTP_400_BAD_REQUEST)
+        
+        try:
+            # Search in global medications
+            medications = GlobalMedication.objects.filter(
+                is_active=True
+            ).filter(
+                Q(name__icontains=query) |
+                Q(generic_name__icontains=query) |
+                Q(brand_name__icontains=query) |
+                Q(composition__icontains=query) |
+                Q(therapeutic_class__icontains=query)
+            )[:limit]
+            
+            serializer = GlobalMedicationSearchSerializer(medications, many=True)
+            
+            return Response({
+                'success': True,
+                'data': {
+                    'medications': serializer.data,
+                    'total_found': medications.count(),
+                    'query': query
+                },
+                'message': 'Medications found successfully',
+                'timestamp': timezone.now().isoformat()
+            })
+            
+        except Exception as e:
+            return Response({
+                'success': False,
+                'error': {
+                    'code': 'SEARCH_ERROR',
+                    'message': f'Error searching medications: {str(e)}'
+                },
+                'timestamp': timezone.now().isoformat()
+            }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+    
+    @action(detail=False, methods=['post'], url_path='bulk-create')
+    def bulk_create_medications(self, request):
+        """Bulk create medications from CSV or JSON"""
+        try:
+            medications_data = request.data.get('medications', [])
+            
+            if not medications_data:
+                return Response({
+                    'success': False,
+                    'error': {
+                        'code': 'MISSING_DATA',
+                        'message': 'Medications data is required'
+                    },
+                    'timestamp': timezone.now().isoformat()
+                }, status=status.HTTP_400_BAD_REQUEST)
+            
+            created_count = 0
+            errors = []
+            
+            for med_data in medications_data:
+                try:
+                    serializer = GlobalMedicationCreateSerializer(data=med_data, context={'request': request})
+                    if serializer.is_valid():
+                        serializer.save()
+                        created_count += 1
+                    else:
+                        errors.append({
+                            'data': med_data,
+                            'errors': serializer.errors
+                        })
+                except Exception as e:
+                    errors.append({
+                        'data': med_data,
+                        'error': str(e)
+                    })
+            
+            return Response({
+                'success': True,
+                'data': {
+                    'created_count': created_count,
+                    'total_attempted': len(medications_data),
+                    'errors': errors
+                },
+                'message': f'Successfully created {created_count} medications',
+                'timestamp': timezone.now().isoformat()
+            })
+            
+        except Exception as e:
+            return Response({
+                'success': False,
+                'error': {
+                    'code': 'BULK_CREATE_ERROR',
+                    'message': f'Error in bulk creation: {str(e)}'
+                },
+                'timestamp': timezone.now().isoformat()
+            }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
 
 
 class ClinicInventoryViewSet(ModelViewSet):
@@ -92,6 +234,365 @@ class ClinicInventoryViewSet(ModelViewSet):
         if self.action == 'create':
             return ClinicInventoryCreateSerializer
         return ClinicInventorySerializer
+    
+    def perform_create(self, serializer):
+        """Set clinic_id when creating inventory item"""
+        clinic_id = self.kwargs.get('clinic_id')
+        serializer.save(clinic_id=clinic_id)
+
+    @action(detail=False, methods=['get'], url_path='medications/search')
+    def search_medications(self, request, clinic_id=None):
+        """Search medications in global catalog and clinic inventory"""
+        query = request.query_params.get('q', '').strip()
+        limit = int(request.query_params.get('limit', 10))
+        
+        if not query:
+            return Response({
+                'success': False,
+                'error': {
+                    'code': 'MISSING_QUERY',
+                    'message': 'Search query is required'
+                },
+                'timestamp': timezone.now().isoformat()
+            }, status=status.HTTP_400_BAD_REQUEST)
+        
+        try:
+            results = []
+            
+            # 1. Search in global medication catalog
+            global_medications = GlobalMedication.objects.filter(
+                is_active=True
+            ).filter(
+                Q(name__icontains=query) |
+                Q(generic_name__icontains=query) |
+                Q(brand_name__icontains=query) |
+                Q(composition__icontains=query)
+            )[:limit]
+            
+            for med in global_medications:
+                # Check if this medication exists in clinic inventory
+                clinic_inventory = ClinicInventory.objects.filter(
+                    clinic_id=clinic_id,
+                    global_medication=med,
+                    is_active=True
+                ).first()
+                
+                results.append({
+                    'id': f"global_{med.id}",
+                    'name': med.display_name,
+                    'strength': med.strength or '',
+                    'form': med.get_dosage_form_display(),
+                    'source': 'global_catalog',
+                    'stock': clinic_inventory.current_stock if clinic_inventory else 0,
+                    'unit': clinic_inventory.unit if clinic_inventory else 'units',
+                    'is_low_stock': clinic_inventory.is_low_stock if clinic_inventory else True,
+                    'expiry_date': clinic_inventory.expiry_date if clinic_inventory else None,
+                    'supplier': clinic_inventory.supplier_name if clinic_inventory else None,
+                    'global_medication_id': med.id,
+                    'composition': med.composition,
+                    'therapeutic_class': med.therapeutic_class,
+                    'frequency_options': med.frequency_options,
+                    'timing_options': med.timing_options
+                })
+            
+            # 2. Search in clinic inventory (medicines only) - for clinic-specific items
+            inventory_medications = ClinicInventory.objects.filter(
+                clinic_id=clinic_id,
+                category='medicine',
+                is_active=True,
+                global_medication__isnull=True  # Only clinic-specific items
+            ).filter(
+                Q(item_name__icontains=query) |
+                Q(description__icontains=query) |
+                Q(brand__icontains=query)
+            )[:limit]
+            
+            for med in inventory_medications:
+                results.append({
+                    'id': f"inventory_{med.id}",
+                    'name': med.item_name,
+                    'strength': med.description or '',
+                    'form': med.brand or 'Tablet',
+                    'source': 'clinic_inventory',
+                    'stock': med.current_stock,
+                    'unit': med.unit,
+                    'is_low_stock': med.is_low_stock,
+                    'expiry_date': med.expiry_date,
+                    'supplier': med.supplier_name,
+                    'global_medication_id': None,
+                    'composition': med.description,
+                    'therapeutic_class': '',
+                    'frequency_options': [],
+                    'timing_options': []
+                })
+            
+            # 3. Search in previously prescribed medications (from prescriptions in this clinic)
+            try:
+                clinic_prescriptions = PrescriptionMedication.objects.filter(
+                    prescription__consultation__clinic_id=clinic_id
+                ).filter(
+                    Q(medicine_name__icontains=query) |
+                    Q(composition__icontains=query) |
+                    Q(dosage_form__icontains=query)
+                ).values('medicine_name', 'composition', 'dosage_form').distinct()[:limit]
+                
+                # If no clinic-specific prescriptions found, search all prescriptions by doctors in this clinic
+                if not clinic_prescriptions.exists():
+                    clinic_prescriptions = PrescriptionMedication.objects.filter(
+                        prescription__doctor__clinic_associations__clinic_id=clinic_id
+                    ).filter(
+                        Q(medicine_name__icontains=query) |
+                        Q(composition__icontains=query) |
+                        Q(dosage_form__icontains=query)
+                    ).values('medicine_name', 'composition', 'dosage_form').distinct()[:limit]
+            except Exception as e:
+                # If there's an issue with clinic relationships, search all medications
+                clinic_prescriptions = PrescriptionMedication.objects.filter(
+                    Q(medicine_name__icontains=query) |
+                    Q(composition__icontains=query) |
+                    Q(dosage_form__icontains=query)
+                ).values('medicine_name', 'composition', 'dosage_form').distinct()[:limit]
+            
+            # Add prescribed medications (avoid duplicates)
+            existing_names = {med['name'] for med in results}
+            for med in clinic_prescriptions:
+                if med['medicine_name'] not in existing_names:
+                    results.append({
+                        'id': f"prescribed_{med['medicine_name']}",
+                        'name': med['medicine_name'],
+                        'strength': med['composition'] or '',
+                        'form': med['dosage_form'] or 'Tablet',
+                        'source': 'previously_prescribed',
+                        'stock': None,
+                        'unit': None,
+                        'is_low_stock': None,
+                        'expiry_date': None,
+                        'supplier': None,
+                        'global_medication_id': None,
+                        'composition': med['composition'],
+                        'therapeutic_class': '',
+                        'frequency_options': [],
+                        'timing_options': []
+                    })
+                    existing_names.add(med['medicine_name'])
+            
+            # Sort by relevance (global catalog first, then inventory, then prescribed)
+            def sort_key(x):
+                if x['source'] == 'global_catalog':
+                    return 0
+                elif x['source'] == 'clinic_inventory':
+                    return 1
+                else:
+                    return 2
+            
+            results.sort(key=sort_key)
+            
+            return Response({
+                'success': True,
+                'data': {
+                    'medications': results[:limit],
+                    'total_found': len(results),
+                    'query': query
+                },
+                'message': 'Medications found successfully',
+                'timestamp': timezone.now().isoformat()
+            })
+            
+        except Exception as e:
+            return Response({
+                'success': False,
+                'error': {
+                    'code': 'SEARCH_ERROR',
+                    'message': f'Error searching medications: {str(e)}'
+                },
+                'timestamp': timezone.now().isoformat()
+            }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+
+    @action(detail=False, methods=['post'], url_path='medications/auto-create')
+    def auto_create_medication(self, request, clinic_id=None):
+        """Auto-create medication in clinic inventory from global catalog"""
+        try:
+            # First, verify that the clinic exists
+            try:
+                clinic = Clinic.objects.get(id=clinic_id)
+            except Clinic.DoesNotExist:
+                return Response({
+                    'success': False,
+                    'error': {
+                        'code': 'CLINIC_NOT_FOUND',
+                        'message': f'Clinic with ID "{clinic_id}" does not exist. Available clinics: {list(Clinic.objects.values_list("id", flat=True))}'
+                    },
+                    'timestamp': timezone.now().isoformat()
+                }, status=status.HTTP_404_NOT_FOUND)
+            
+            data = request.data
+            global_medication_id = data.get('global_medication_id')
+            name = data.get('name', '').strip()
+            composition = data.get('composition', '').strip()
+            dosage_form = data.get('dosage_form', 'Tablet').strip()
+            
+            if not global_medication_id and not name:
+                return Response({
+                    'success': False,
+                    'error': {
+                        'code': 'MISSING_DATA',
+                        'message': 'Either global_medication_id or name is required'
+                    },
+                    'timestamp': timezone.now().isoformat()
+                }, status=status.HTTP_400_BAD_REQUEST)
+            
+            # If global_medication_id is provided, link to existing global medication
+            if global_medication_id:
+                try:
+                    global_medication = GlobalMedication.objects.get(id=global_medication_id, is_active=True)
+                    
+                    # Check if already exists in clinic inventory
+                    existing_inventory = ClinicInventory.objects.filter(
+                        clinic_id=clinic_id,
+                        global_medication=global_medication
+                    ).first()
+                    
+                    if existing_inventory:
+                        return Response({
+                            'success': True,
+                            'data': {
+                                'medication': {
+                                    'id': existing_inventory.id,
+                                    'name': global_medication.display_name,
+                                    'strength': global_medication.strength or '',
+                                    'form': global_medication.get_dosage_form_display(),
+                                    'source': 'existing_inventory',
+                                    'stock': existing_inventory.current_stock,
+                                    'unit': existing_inventory.unit,
+                                    'is_low_stock': existing_inventory.is_low_stock,
+                                    'expiry_date': existing_inventory.expiry_date,
+                                    'supplier': existing_inventory.supplier_name
+                                },
+                                'message': 'Medication already exists in clinic inventory'
+                            },
+                            'message': 'Medication found in existing inventory',
+                            'timestamp': timezone.now().isoformat()
+                        })
+                    
+                    # Create new inventory item linked to global medication
+                    new_inventory = ClinicInventory.objects.create(
+                        clinic_id=clinic_id,
+                        global_medication=global_medication,
+                        category='medicine',
+                        item_name=global_medication.display_name,
+                        description=global_medication.composition,
+                        brand=global_medication.get_dosage_form_display(),
+                        current_stock=0,
+                        minimum_stock=10,  # Set minimum stock to trigger low stock
+                        unit='units',
+                        supplier_name='Auto-created from prescription'
+                    )
+                    
+                    return Response({
+                        'success': True,
+                        'data': {
+                            'medication': {
+                                'id': new_inventory.id,
+                                'name': global_medication.display_name,
+                                'strength': global_medication.strength or '',
+                                'form': global_medication.get_dosage_form_display(),
+                                'source': 'newly_created',
+                                'stock': new_inventory.current_stock,
+                                'unit': new_inventory.unit,
+                                'is_low_stock': new_inventory.is_low_stock,
+                                'expiry_date': new_inventory.expiry_date,
+                                'supplier': new_inventory.supplier_name
+                            },
+                            'message': 'Medication created successfully in clinic inventory'
+                        },
+                        'message': 'Medication created successfully',
+                        'timestamp': timezone.now().isoformat()
+                    })
+                    
+                except GlobalMedication.DoesNotExist:
+                    return Response({
+                        'success': False,
+                        'error': {
+                            'code': 'MEDICATION_NOT_FOUND',
+                            'message': 'Global medication not found'
+                        },
+                        'timestamp': timezone.now().isoformat()
+                    }, status=status.HTTP_404_NOT_FOUND)
+            
+            # If no global_medication_id, create clinic-specific medication
+            else:
+                # Check if medication already exists in clinic inventory
+                existing_medication = ClinicInventory.objects.filter(
+                    clinic_id=clinic_id,
+                    category='medicine',
+                    item_name__iexact=name
+                ).first()
+                
+                if existing_medication:
+                    return Response({
+                        'success': True,
+                        'data': {
+                            'medication': {
+                                'id': existing_medication.id,
+                                'name': existing_medication.item_name,
+                                'strength': existing_medication.description or '',
+                                'form': existing_medication.brand or 'Tablet',
+                                'source': 'existing_inventory',
+                                'stock': existing_medication.current_stock,
+                                'unit': existing_medication.unit,
+                                'is_low_stock': existing_medication.is_low_stock,
+                                'expiry_date': existing_medication.expiry_date,
+                                'supplier': existing_medication.supplier_name
+                            },
+                            'message': 'Medication already exists in clinic inventory'
+                        },
+                        'message': 'Medication found in existing inventory',
+                        'timestamp': timezone.now().isoformat()
+                    })
+                
+                # Create new clinic-specific medication
+                new_medication = ClinicInventory.objects.create(
+                    clinic_id=clinic_id,
+                    category='medicine',
+                    item_name=name,
+                    description=composition,
+                    brand=dosage_form,
+                    current_stock=0,
+                    minimum_stock=10,  # Set minimum stock to trigger low stock
+                    unit='units',
+                    supplier_name='Auto-created from prescription'
+                )
+                
+                return Response({
+                    'success': True,
+                    'data': {
+                        'medication': {
+                            'id': new_medication.id,
+                            'name': new_medication.item_name,
+                            'strength': new_medication.description or '',
+                            'form': new_medication.brand or 'Tablet',
+                            'source': 'newly_created',
+                            'stock': new_medication.current_stock,
+                            'unit': new_medication.unit,
+                            'is_low_stock': new_medication.is_low_stock,
+                            'expiry_date': new_medication.expiry_date,
+                            'supplier': new_medication.supplier_name
+                        },
+                        'message': 'Medication created successfully in clinic inventory'
+                    },
+                    'message': 'Medication created successfully',
+                    'timestamp': timezone.now().isoformat()
+                })
+            
+        except Exception as e:
+            return Response({
+                'success': False,
+                'error': {
+                    'code': 'CREATION_ERROR',
+                    'message': f'Error creating medication: {str(e)}'
+                },
+                'timestamp': timezone.now().isoformat()
+            }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
 
 
 class ClinicAppointmentViewSet(ModelViewSet):

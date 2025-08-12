@@ -315,6 +315,103 @@ class ClinicReview(models.Model):
         return f"Review for {self.clinic.name} by {self.patient.name} - {self.overall_rating}/5"
 
 
+class GlobalMedication(models.Model):
+    """Global medication catalog managed by super admin"""
+    
+    MEDICATION_FORMS = [
+        ('tablet', 'Tablet'),
+        ('capsule', 'Capsule'),
+        ('syrup', 'Syrup'),
+        ('injection', 'Injection'),
+        ('cream', 'Cream'),
+        ('ointment', 'Ointment'),
+        ('drops', 'Drops'),
+        ('inhaler', 'Inhaler'),
+        ('suppository', 'Suppository'),
+        ('other', 'Other'),
+    ]
+    
+    MEDICATION_TYPES = [
+        ('generic', 'Generic'),
+        ('branded', 'Branded'),
+        ('combination', 'Combination'),
+    ]
+    
+    # Basic Information
+    name = models.CharField(max_length=200, unique=True)
+    generic_name = models.CharField(max_length=200, blank=True)
+    brand_name = models.CharField(max_length=200, blank=True)
+    composition = models.TextField(blank=True, help_text="Active ingredients and composition")
+    
+    # Medication Details
+    dosage_form = models.CharField(max_length=20, choices=MEDICATION_FORMS, default='tablet')
+    strength = models.CharField(max_length=100, blank=True, help_text="e.g., 500mg, 10mg/ml")
+    medication_type = models.CharField(max_length=20, choices=MEDICATION_TYPES, default='generic')
+    
+    # Therapeutic Information
+    therapeutic_class = models.CharField(max_length=200, blank=True)
+    indication = models.TextField(blank=True, help_text="What this medication is used for")
+    contraindications = models.TextField(blank=True)
+    side_effects = models.TextField(blank=True)
+    
+    # Dosage Information
+    dosage_instructions = models.TextField(blank=True, help_text="General dosage instructions")
+    frequency_options = models.JSONField(default=list, help_text="Available frequency options")
+    timing_options = models.JSONField(default=list, help_text="Available timing options")
+    
+    # Regulatory Information
+    manufacturer = models.CharField(max_length=200, blank=True)
+    license_number = models.CharField(max_length=100, blank=True)
+    is_prescription_required = models.BooleanField(default=True)
+    
+    # Status
+    is_active = models.BooleanField(default=True)
+    is_verified = models.BooleanField(default=False)
+    
+    # Metadata
+    created_by = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name='created_medications'
+    )
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+    
+    class Meta:
+        db_table = 'global_medications'
+        verbose_name = 'Global Medication'
+        verbose_name_plural = 'Global Medications'
+        ordering = ['name']
+        indexes = [
+            models.Index(fields=['name']),
+            models.Index(fields=['generic_name']),
+            models.Index(fields=['brand_name']),
+            models.Index(fields=['is_active']),
+        ]
+    
+    def __str__(self):
+        return f"{self.name} ({self.strength})"
+    
+    @property
+    def display_name(self):
+        """Get display name with strength"""
+        if self.strength:
+            return f"{self.name} {self.strength}"
+        return self.name
+    
+    @property
+    def full_name(self):
+        """Get full medication name with all details"""
+        parts = [self.name]
+        if self.strength:
+            parts.append(self.strength)
+        if self.dosage_form:
+            parts.append(f"({self.get_dosage_form_display()})")
+        return " ".join(parts)
+
+
 class ClinicInventory(models.Model):
     """Inventory management for clinics"""
     
@@ -330,6 +427,16 @@ class ClinicInventory(models.Model):
         Clinic, 
         on_delete=models.CASCADE, 
         related_name='inventory'
+    )
+    
+    # Link to global medication (for medicines only)
+    global_medication = models.ForeignKey(
+        GlobalMedication,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name='clinic_inventories',
+        help_text="Link to global medication catalog"
     )
     
     # Item Details
@@ -368,9 +475,18 @@ class ClinicInventory(models.Model):
         db_table = 'clinic_inventory'
         verbose_name = 'Clinic Inventory'
         verbose_name_plural = 'Clinic Inventory'
+        unique_together = ['clinic', 'global_medication', 'batch_number']
     
     def __str__(self):
+        if self.global_medication:
+            return f"{self.global_medication.display_name} - {self.clinic.name}"
         return f"{self.item_name} - {self.clinic.name}"
+    
+    def save(self, *args, **kwargs):
+        # Auto-populate item_name from global_medication if available
+        if self.global_medication and not self.item_name:
+            self.item_name = self.global_medication.display_name
+        super().save(*args, **kwargs)
     
     @property
     def is_low_stock(self):

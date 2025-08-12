@@ -4,8 +4,8 @@ from django.db import models
 from django.core.exceptions import ValidationError
 from authentication.models import User
 from .models import (
-    Clinic, ClinicService, ClinicInventory,
-    ClinicAppointment, ClinicReview, ClinicDocument
+    Clinic, ClinicService, ClinicInventory, ClinicReview, 
+    ClinicAppointment, ClinicDocument, GlobalMedication
 )
 from utils.signed_urls import get_signed_media_url
 
@@ -148,39 +148,111 @@ class ClinicServiceCreateSerializer(serializers.ModelSerializer):
         return super().create(validated_data)
 
 
+class GlobalMedicationSerializer(serializers.ModelSerializer):
+    """Serializer for global medications"""
+    
+    created_by_name = serializers.CharField(source='created_by.name', read_only=True)
+    dosage_form_display = serializers.CharField(source='get_dosage_form_display', read_only=True)
+    medication_type_display = serializers.CharField(source='get_medication_type_display', read_only=True)
+    
+    class Meta:
+        model = GlobalMedication
+        fields = [
+            'id', 'name', 'generic_name', 'brand_name', 'composition',
+            'dosage_form', 'dosage_form_display', 'strength', 'medication_type', 'medication_type_display',
+            'therapeutic_class', 'indication', 'contraindications', 'side_effects',
+            'dosage_instructions', 'frequency_options', 'timing_options',
+            'manufacturer', 'license_number', 'is_prescription_required',
+            'is_active', 'is_verified', 'created_by_name',
+            'created_at', 'updated_at'
+        ]
+        read_only_fields = ['id', 'created_at', 'updated_at', 'created_by_name']
+
+
+class GlobalMedicationCreateSerializer(serializers.ModelSerializer):
+    """Serializer for creating global medications"""
+    
+    class Meta:
+        model = GlobalMedication
+        fields = [
+            'name', 'generic_name', 'brand_name', 'composition',
+            'dosage_form', 'strength', 'medication_type',
+            'therapeutic_class', 'indication', 'contraindications', 'side_effects',
+            'dosage_instructions', 'frequency_options', 'timing_options',
+            'manufacturer', 'license_number', 'is_prescription_required',
+            'is_active', 'is_verified'
+        ]
+    
+    def validate_name(self, value):
+        """Check if medication name already exists"""
+        if GlobalMedication.objects.filter(name__iexact=value).exists():
+            raise serializers.ValidationError("A medication with this name already exists.")
+        return value
+    
+    def create(self, validated_data):
+        """Create medication with current user as creator"""
+        validated_data['created_by'] = self.context['request'].user
+        return super().create(validated_data)
+
+
+class GlobalMedicationSearchSerializer(serializers.ModelSerializer):
+    """Serializer for medication search results"""
+    
+    dosage_form_display = serializers.CharField(source='get_dosage_form_display', read_only=True)
+    medication_type_display = serializers.CharField(source='get_medication_type_display', read_only=True)
+    
+    class Meta:
+        model = GlobalMedication
+        fields = [
+            'id', 'name', 'generic_name', 'brand_name', 'composition',
+            'dosage_form', 'dosage_form_display', 'strength', 'medication_type', 'medication_type_display',
+            'therapeutic_class', 'indication', 'manufacturer', 'is_prescription_required',
+            'frequency_options', 'timing_options'
+        ]
+
+
 class ClinicInventorySerializer(serializers.ModelSerializer):
     """Serializer for clinic inventory"""
+    
     clinic_name = serializers.CharField(source='clinic.name', read_only=True)
+    global_medication_details = GlobalMedicationSerializer(source='global_medication', read_only=True)
     
     class Meta:
         model = ClinicInventory
         fields = [
-            'id', 'clinic', 'clinic_name', 'item_name', 'category',
-            'description', 'brand', 'model_number', 'current_stock',
-            'minimum_stock', 'maximum_stock', 'unit', 'unit_cost',
-            'selling_price', 'batch_number', 'expiry_date', 'supplier_name',
-            'supplier_contact', 'is_active', 'created_at', 'updated_at'
+            'id', 'clinic', 'clinic_name', 'global_medication', 'global_medication_details',
+            'item_name', 'category', 'description', 'brand', 'model_number',
+            'current_stock', 'minimum_stock', 'maximum_stock', 'unit',
+            'unit_cost', 'selling_price', 'batch_number', 'expiry_date',
+            'supplier_name', 'supplier_contact', 'is_active',
+            'is_low_stock', 'is_expired', 'created_at', 'updated_at'
         ]
-        read_only_fields = ['id', 'created_at', 'updated_at']
+        read_only_fields = ['id', 'created_at', 'updated_at', 'clinic_name', 'global_medication_details']
 
 
 class ClinicInventoryCreateSerializer(serializers.ModelSerializer):
-    """Serializer for creating clinic inventory"""
+    """Serializer for creating clinic inventory items"""
     
     class Meta:
         model = ClinicInventory
         fields = [
-            'item_name', 'category', 'description', 'brand', 'model_number',
-            'current_stock', 'minimum_stock', 'maximum_stock', 'unit', 'unit_cost',
-            'selling_price', 'batch_number', 'expiry_date', 'supplier_name',
-            'supplier_contact', 'is_active'
+            'global_medication', 'item_name', 'category', 'description', 'brand', 'model_number',
+            'current_stock', 'minimum_stock', 'maximum_stock', 'unit',
+            'unit_cost', 'selling_price', 'batch_number', 'expiry_date',
+            'supplier_name', 'supplier_contact', 'is_active'
         ]
     
-    def create(self, validated_data):
-        """Create clinic inventory item"""
-        clinic_id = self.context['view'].kwargs.get('clinic_id')
-        validated_data['clinic_id'] = clinic_id
-        return super().create(validated_data)
+    def validate(self, data):
+        """Validate inventory data"""
+        # If global_medication is provided, ensure category is medicine
+        if data.get('global_medication') and data.get('category') != 'medicine':
+            raise serializers.ValidationError("Global medication can only be linked to medicine category.")
+        
+        # If category is medicine but no global_medication, ensure item_name is provided
+        if data.get('category') == 'medicine' and not data.get('global_medication') and not data.get('item_name'):
+            raise serializers.ValidationError("Medicine name is required when not linking to global medication.")
+        
+        return data
 
 
 class ClinicAppointmentSerializer(serializers.ModelSerializer):
