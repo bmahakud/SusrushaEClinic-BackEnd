@@ -45,6 +45,29 @@ class IsAdminOrSuperAdmin(BasePermission):
         return request.user and request.user.is_authenticated and request.user.role in ['admin', 'superadmin']
 
 
+# Custom permission for doctor slots - allows doctor to manage their own slots or superadmin to manage any doctor's slots
+class IsDoctorOrSuperAdmin(BasePermission):
+    def has_permission(self, request, view):
+        if not request.user or not request.user.is_authenticated:
+            return False
+        
+        # Superadmin can manage any doctor's slots
+        if request.user.role == 'superadmin':
+            return True
+        
+        # Doctor can only manage their own slots
+        if request.user.role == 'doctor':
+            doctor_id = view.kwargs.get('doctor_id')
+            # Allow if doctor_id matches current user or if it's 'current' (for self-reference)
+            return doctor_id == str(request.user.id) or doctor_id == 'current'
+        
+        # Admin can also manage any doctor's slots
+        if request.user.role == 'admin':
+            return True
+        
+        return False
+
+
 class DoctorProfileViewSet(ModelViewSet):
     """ViewSet for doctor profile management"""
     queryset = DoctorProfile.objects.all()
@@ -290,7 +313,7 @@ class DoctorReviewViewSet(ModelViewSet):
 
 class DoctorSlotViewSet(ModelViewSet):
     """ViewSet for doctor slots (multiple slots per day, month view)"""
-    permission_classes = [permissions.IsAuthenticated]
+    permission_classes = [IsDoctorOrSuperAdmin]
     serializer_class = DoctorSlotSerializer
 
     def get_serializer(self, *args, **kwargs):
@@ -299,6 +322,9 @@ class DoctorSlotViewSet(ModelViewSet):
 
     def get_queryset(self):
         doctor_id = self.kwargs.get('doctor_id')
+        # Handle 'current' doctor_id for self-reference
+        if doctor_id == 'current':
+            doctor_id = self.request.user.id
         queryset = DoctorSlot.objects.filter(doctor_id=doctor_id)
         # Optional: filter by month
         month = self.request.query_params.get('month')
@@ -309,6 +335,9 @@ class DoctorSlotViewSet(ModelViewSet):
 
     def perform_create(self, serializer):
         doctor_id = self.kwargs.get('doctor_id')
+        # Handle 'current' doctor_id for self-reference
+        if doctor_id == 'current':
+            doctor_id = self.request.user.id
         serializer.save(doctor_id=doctor_id)
 
     def create(self, request, *args, **kwargs):

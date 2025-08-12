@@ -288,6 +288,10 @@ class DoctorSlotSerializer(serializers.ModelSerializer):
         """Custom validation to handle clinic field and check for duplicates"""
         doctor_id = self.context['view'].kwargs.get('doctor_id')
         
+        # Handle 'current' doctor_id for self-reference
+        if doctor_id == 'current':
+            doctor_id = self.context['request'].user.id
+        
         # If clinic is not provided, set it to None for global availability
         if 'clinic' not in data:
             data['clinic'] = None
@@ -310,7 +314,16 @@ class DoctorSlotSerializer(serializers.ModelSerializer):
 
     def create(self, validated_data):
         doctor_id = self.context['view'].kwargs.get('doctor_id')
-        doctor = User.objects.get(id=doctor_id)
+        
+        # Handle 'current' doctor_id for self-reference
+        if doctor_id == 'current':
+            doctor_id = self.context['request'].user.id
+        
+        try:
+            doctor = User.objects.get(id=doctor_id)
+        except User.DoesNotExist:
+            raise serializers.ValidationError(f"Doctor with ID {doctor_id} does not exist")
+        
         validated_data['doctor'] = doctor
         
         # If clinic is not provided, we'll set it to None for global availability
@@ -361,7 +374,15 @@ class DoctorSlotGenerationSerializer(serializers.Serializer):
     
     def create(self, validated_data):
         doctor_id = self.context['view'].kwargs.get('doctor_id')
-        doctor = User.objects.get(id=doctor_id)
+        
+        # Handle 'current' doctor_id for self-reference
+        if doctor_id == 'current':
+            doctor_id = self.context['request'].user.id
+        
+        try:
+            doctor = User.objects.get(id=doctor_id)
+        except User.DoesNotExist:
+            raise serializers.ValidationError(f"Doctor with ID {doctor_id} does not exist")
         
         # Generate slots using the model method
         slots = DoctorSlot.generate_slots_for_availability(
@@ -373,36 +394,6 @@ class DoctorSlotGenerationSerializer(serializers.Serializer):
         )
         
         return slots
-        # Get doctor from context since it's read-only in the serializer
-        doctor_id = self.context['view'].kwargs.get('doctor_id')
-        if not doctor_id:
-            raise serializers.ValidationError("Doctor ID is required")
-        
-        try:
-            doctor = User.objects.get(id=doctor_id)
-        except User.DoesNotExist:
-            raise serializers.ValidationError("Doctor not found")
-        
-        date = data['date']
-        start_time = data['start_time']
-        end_time = data['end_time']
-
-        from consultations.models import Consultation
-        # Check for overlapping consultations
-        overlapping = Consultation.objects.filter(
-            doctor=doctor,
-            scheduled_date=date,
-            status__in=['scheduled', 'in_progress']
-        ).filter(
-            scheduled_time__lt=end_time,
-        ).exclude(
-            scheduled_time__gte=end_time
-        )
-
-        if overlapping.exists():
-            raise serializers.ValidationError("This doctor already has a consultation in this time slot.")
-
-        return data
 
 
 class DoctorStatusSerializer(serializers.ModelSerializer):
