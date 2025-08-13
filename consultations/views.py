@@ -575,7 +575,7 @@ class ConsultationViewSet(ModelViewSet):
             'timestamp': timezone.now().isoformat()
         }, status=status.HTTP_200_OK)
 
-    @action(detail=False, methods=['get'])
+    @action(detail=False, methods=['get'], permission_classes=[permissions.AllowAny])
     def calculate_available_slots(self, request):
         """Calculate available slots dynamically based on doctor availability and clinic duration"""
         doctor_id = request.query_params.get('doctor_id')
@@ -623,10 +623,11 @@ class ConsultationViewSet(ModelViewSet):
             
             # OPTIMIZATION: Pre-fetch all existing consultations for this doctor and date
             # Use select_related to avoid N+1 queries and only fetch needed fields
+            # Include completed consultations as they also block time slots
             existing_consultations = Consultation.objects.filter(
                 doctor=doctor,
                 scheduled_date=date_obj,
-                status__in=['scheduled', 'in_progress', 'confirmed']
+                status__in=['scheduled', 'in_progress', 'confirmed', 'completed']
             ).only('scheduled_time', 'duration')
             
             # OPTIMIZATION: Pre-fetch all booked slots for this doctor and date
@@ -660,6 +661,10 @@ class ConsultationViewSet(ModelViewSet):
             
             calculated_slots = []
             
+            print(f"DEBUG: Doctor {doctor.name} has {len(available_slots)} available slots")
+            print(f"DEBUG: Found {len(existing_consultations)} existing consultations")
+            print(f"DEBUG: Consultation duration: {consultation_duration} minutes")
+            
             for slot in available_slots:
                 # Convert slot times to datetime for calculation
                 slot_start = datetime.combine(date_obj, slot.start_time)
@@ -687,17 +692,23 @@ class ConsultationViewSet(ModelViewSet):
                             break
                     
                     if not is_blocked:
-                        calculated_slots.append({
+                        slot_data = {
                             'start_time': slot_start_time.strftime('%H:%M'),
                             'end_time': slot_end_time_obj.strftime('%H:%M'),
                             'duration_minutes': consultation_duration,
                             'clinic_name': clinic.name,
                             'doctor_name': doctor.name,
                             'is_available': True
-                        })
+                        }
+                        calculated_slots.append(slot_data)
+                        print(f"DEBUG: Created slot {slot_data['start_time']} - {slot_data['end_time']}")
+                    else:
+                        print(f"DEBUG: Blocked slot {slot_start_time.strftime('%H:%M')} - {slot_end_time_obj.strftime('%H:%M')}")
                     
                     # Move to next slot
                     current_time = slot_end_time
+            
+            print(f"DEBUG: Final result - {len(calculated_slots)} slots calculated")
             
             return Response({
                 'success': True,
