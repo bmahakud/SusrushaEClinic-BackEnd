@@ -40,7 +40,7 @@ class DoctorProfile(models.Model):
     
     # Consultation Information
     consultation_fee = models.DecimalField(max_digits=10, decimal_places=2)
-    consultation_duration = models.PositiveIntegerField(default=30, help_text="Duration in minutes")
+    consultation_duration = models.PositiveIntegerField(default=5, help_text="Duration in minutes")
     
     # Ratings and Reviews
     rating = models.DecimalField(

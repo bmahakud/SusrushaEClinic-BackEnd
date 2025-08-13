@@ -607,15 +607,19 @@ class ConsultationViewSet(ModelViewSet):
         
         try:
             # Get doctor and clinic
-            from doctors.models import DoctorSlot
+            from doctors.models import DoctorSlot, DoctorProfile
             from eclinic.models import Clinic
             from authentication.models import User
             
             doctor = User.objects.get(id=doctor_id, role='doctor')
             clinic = Clinic.objects.get(id=clinic_id)
             
-            # Get clinic consultation duration
-            consultation_duration = clinic.consultation_duration  # in minutes
+            # Get doctor's consultation duration (default to 5 minutes if not set)
+            try:
+                doctor_profile = DoctorProfile.objects.get(user=doctor)
+                consultation_duration = doctor_profile.consultation_duration or 5  # in minutes
+            except DoctorProfile.DoesNotExist:
+                consultation_duration = 5  # Default to 5 minutes if no profile exists
             
             # OPTIMIZATION: Pre-fetch all existing consultations for this doctor and date
             # Use select_related to avoid N+1 queries and only fetch needed fields
@@ -699,7 +703,8 @@ class ConsultationViewSet(ModelViewSet):
                 'success': True,
                 'data': {
                     'slots': calculated_slots,
-                    'clinic_duration': consultation_duration,
+                    'clinic_duration': consultation_duration,  # This is now doctor's consultation duration
+                    'doctor_consultation_duration': consultation_duration,  # Add explicit field for clarity
                     'date': date,
                     'doctor_name': doctor.name,
                     'clinic_name': clinic.name
