@@ -86,6 +86,8 @@ class DoctorProfileViewSet(ModelViewSet):
         """Return appropriate serializer based on action"""
         if self.action == 'create':
             return DoctorProfileCreateSerializer
+        elif self.action == 'update' or self.action == 'partial_update':
+            return DoctorProfileUpdateSerializer
         elif self.action == 'list':
             return DoctorListSerializer
         return DoctorProfileSerializer
@@ -149,6 +151,53 @@ class DoctorProfileViewSet(ModelViewSet):
                 'message': 'Doctor profile retrieved successfully',
                 'timestamp': timezone.now().isoformat()
             }, status=status.HTTP_200_OK)
+        except DoctorProfile.DoesNotExist:
+            return Response({
+                'success': False,
+                'error': {
+                    'code': 'PROFILE_NOT_FOUND',
+                    'message': 'Doctor profile not found'
+                },
+                'timestamp': timezone.now().isoformat()
+            }, status=status.HTTP_404_NOT_FOUND)
+    
+    @action(detail=False, methods=['put', 'patch'])
+    def update_me(self, request):
+        """Update current doctor's profile"""
+        if request.user.role != 'doctor':
+            return Response({
+                'success': False,
+                'error': {
+                    'code': 'PERMISSION_DENIED',
+                    'message': 'Only doctors can update their own profile'
+                },
+                'timestamp': timezone.now().isoformat()
+            }, status=status.HTTP_403_FORBIDDEN)
+        
+        try:
+            doctor_profile = DoctorProfile.objects.get(user=request.user)
+            serializer = DoctorProfileUpdateSerializer(doctor_profile, data=request.data, partial=True)
+            
+            if serializer.is_valid():
+                updated_profile = serializer.save()
+                response_serializer = DoctorProfileSerializer(updated_profile)
+                return Response({
+                    'success': True,
+                    'data': response_serializer.data,
+                    'message': 'Doctor profile updated successfully',
+                    'timestamp': timezone.now().isoformat()
+                }, status=status.HTTP_200_OK)
+            else:
+                return Response({
+                    'success': False,
+                    'error': {
+                        'code': 'VALIDATION_ERROR',
+                        'message': 'Invalid data provided',
+                        'details': serializer.errors
+                    },
+                    'timestamp': timezone.now().isoformat()
+                }, status=status.HTTP_400_BAD_REQUEST)
+                
         except DoctorProfile.DoesNotExist:
             return Response({
                 'success': False,

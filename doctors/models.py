@@ -75,6 +75,14 @@ class DoctorProfile(models.Model):
     date_of_birth = models.DateField(null=True, blank=True)
     date_of_anniversary = models.DateField(null=True, blank=True)
     
+    # Digital Signature
+    signature = models.FileField(
+        upload_to='doctor_signatures/',
+        null=True,
+        blank=True,
+        help_text="Doctor's digital signature file"
+    )
+    
     # Metadata
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)

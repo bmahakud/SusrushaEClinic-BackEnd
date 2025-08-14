@@ -19,13 +19,14 @@ class DoctorProfileSerializer(serializers.ModelSerializer):
     experience_years = serializers.ReadOnlyField()
     meeting_link = serializers.SerializerMethodField(read_only=True)
     profile_picture = serializers.SerializerMethodField()
+    signature_url = serializers.SerializerMethodField()
     # Note: Using 'rating' field from model instead of 'average_rating'
     
     class Meta:
         model = DoctorProfile
         fields = [
             'id', 'user', 'user_name', 'user_phone', 'user_email',
-            'profile_picture',
+            'profile_picture', 'signature_url',
             'license_number', 'qualification', 'specialization', 'sub_specialization',
             'experience_years', 'consultation_fee', 'online_consultation_fee',
             'languages_spoken', 'bio', 'achievements',
@@ -45,6 +46,12 @@ class DoctorProfileSerializer(serializers.ModelSerializer):
         if obj.user.profile_picture:
             return get_signed_media_url(str(obj.user.profile_picture))
         return None
+    
+    def get_signature_url(self, obj):
+        """Generate signed URL for signature"""
+        if obj.signature:
+            return get_signed_media_url(str(obj.signature))
+        return None
 
 
 class DoctorProfileCreateSerializer(serializers.ModelSerializer):
@@ -57,7 +64,7 @@ class DoctorProfileCreateSerializer(serializers.ModelSerializer):
             'consultation_fee', 'online_consultation_fee', 'languages_spoken',
             'bio', 'achievements', 'consultation_duration',
             'is_online_consultation_available', 'clinic_name', 'clinic_address',
-            'date_of_birth', 'date_of_anniversary'
+            'date_of_birth', 'date_of_anniversary', 'signature'
         ]
     
     def create(self, validated_data):
@@ -65,6 +72,28 @@ class DoctorProfileCreateSerializer(serializers.ModelSerializer):
         user = self.context['request'].user
         validated_data['user'] = user
         return super().create(validated_data)
+
+
+class DoctorProfileUpdateSerializer(serializers.ModelSerializer):
+    """Serializer for updating doctor profile"""
+    
+    class Meta:
+        model = DoctorProfile
+        fields = [
+            'license_number', 'qualification', 'specialization', 'sub_specialization',
+            'consultation_fee', 'online_consultation_fee', 'languages_spoken',
+            'bio', 'achievements', 'consultation_duration',
+            'is_online_consultation_available', 'clinic_name', 'clinic_address',
+            'date_of_birth', 'date_of_anniversary', 'signature'
+        ]
+    
+    def validate_license_number(self, value):
+        """Validate license number uniqueness"""
+        user = self.context['request'].user
+        # Check if license number already exists for another doctor
+        if DoctorProfile.objects.filter(license_number=value).exclude(user=user).exists():
+            raise serializers.ValidationError("A doctor with this license number already exists.")
+        return value
 
 
 class DoctorEducationSerializer(serializers.ModelSerializer):
