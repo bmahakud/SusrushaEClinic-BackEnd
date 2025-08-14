@@ -77,6 +77,24 @@ class DoctorProfileCreateSerializer(serializers.ModelSerializer):
 class DoctorProfileUpdateSerializer(serializers.ModelSerializer):
     """Serializer for updating doctor profile"""
     
+    # Make fields optional for updates
+    license_number = serializers.CharField(required=False, allow_blank=True)
+    qualification = serializers.CharField(required=False, allow_blank=True)
+    specialization = serializers.ChoiceField(choices=DoctorProfile.SPECIALTIES, required=False, allow_blank=True)
+    sub_specialization = serializers.CharField(required=False, allow_blank=True)
+    consultation_fee = serializers.DecimalField(max_digits=10, decimal_places=2, required=False)
+    online_consultation_fee = serializers.DecimalField(max_digits=10, decimal_places=2, required=False, allow_null=True)
+    languages_spoken = serializers.JSONField(required=False)
+    bio = serializers.CharField(required=False, allow_blank=True)
+    achievements = serializers.CharField(required=False, allow_blank=True)
+    consultation_duration = serializers.IntegerField(required=False)
+    is_online_consultation_available = serializers.BooleanField(required=False)
+    clinic_name = serializers.CharField(required=False, allow_blank=True)
+    clinic_address = serializers.CharField(required=False, allow_blank=True)
+    date_of_birth = serializers.DateField(required=False, allow_null=True)
+    date_of_anniversary = serializers.DateField(required=False, allow_null=True)
+    signature = serializers.FileField(required=False, allow_null=True)
+    
     class Meta:
         model = DoctorProfile
         fields = [
@@ -89,10 +107,19 @@ class DoctorProfileUpdateSerializer(serializers.ModelSerializer):
     
     def validate_license_number(self, value):
         """Validate license number uniqueness"""
+        if not value or value.strip() == '':
+            return value  # Allow empty/blank values for updates
+            
         user = self.context['request'].user
         # Check if license number already exists for another doctor
         if DoctorProfile.objects.filter(license_number=value).exclude(user=user).exists():
             raise serializers.ValidationError("A doctor with this license number already exists.")
+        return value
+    
+    def validate_specialization(self, value):
+        """Validate specialization choice"""
+        if not value or value.strip() == '':
+            return value  # Allow empty/blank values for updates
         return value
 
 
