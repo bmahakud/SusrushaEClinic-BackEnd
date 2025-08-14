@@ -49,8 +49,13 @@ class DoctorProfileSerializer(serializers.ModelSerializer):
     
     def get_signature_url(self, obj):
         """Generate signed URL for signature"""
+        print(f"🔍 get_signature_url called for obj: {obj}")
+        print(f"🔍 obj.signature: {obj.signature}")
         if obj.signature:
-            return get_signed_media_url(str(obj.signature))
+            signed_url = get_signed_media_url(str(obj.signature))
+            print(f"🔍 Generated signed URL: {signed_url}")
+            return signed_url
+        print(f"🔍 No signature found, returning None")
         return None
 
 
@@ -77,6 +82,9 @@ class DoctorProfileCreateSerializer(serializers.ModelSerializer):
 class DoctorProfileUpdateSerializer(serializers.ModelSerializer):
     """Serializer for updating doctor profile"""
     
+    # Add signature_url field for response
+    signature_url = serializers.SerializerMethodField()
+    
     # Make fields optional for updates
     license_number = serializers.CharField(required=False, allow_blank=True)
     qualification = serializers.CharField(required=False, allow_blank=True)
@@ -102,7 +110,7 @@ class DoctorProfileUpdateSerializer(serializers.ModelSerializer):
             'consultation_fee', 'online_consultation_fee', 'languages_spoken',
             'bio', 'achievements', 'consultation_duration',
             'is_online_consultation_available', 'clinic_name', 'clinic_address',
-            'date_of_birth', 'date_of_anniversary', 'signature'
+            'date_of_birth', 'date_of_anniversary', 'signature', 'signature_url'
         ]
     
     def validate_license_number(self, value):
@@ -125,6 +133,17 @@ class DoctorProfileUpdateSerializer(serializers.ModelSerializer):
         if not value or value.strip() == '':
             return value  # Allow empty/blank values for updates
         return value
+    
+    def get_signature_url(self, obj):
+        """Generate signed URL for signature"""
+        print(f"🔍 get_signature_url (update) called for obj: {obj}")
+        print(f"🔍 obj.signature: {obj.signature}")
+        if obj.signature:
+            signed_url = get_signed_media_url(str(obj.signature))
+            print(f"🔍 Generated signed URL (update): {signed_url}")
+            return signed_url
+        print(f"🔍 No signature found (update), returning None")
+        return None
 
 
 class DoctorEducationSerializer(serializers.ModelSerializer):
