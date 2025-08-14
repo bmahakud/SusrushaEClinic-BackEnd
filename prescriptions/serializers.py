@@ -82,7 +82,7 @@ class PrescriptionSerializer(serializers.ModelSerializer):
             'issued_date', 'issued_time',
             'pulse', 'blood_pressure_systolic', 'blood_pressure_diastolic', 'blood_pressure_display',
             'temperature', 'weight', 'height',
-            'primary_diagnosis', 'secondary_diagnosis', 'clinical_classification',
+            'primary_diagnosis', 'patient_previous_history', 'clinical_classification',
             'general_instructions', 'fluid_intake', 'diet_instructions', 'lifestyle_advice',
             'next_visit', 'follow_up_notes',
             'is_draft', 'is_finalized',
@@ -123,7 +123,7 @@ class PrescriptionCreateSerializer(serializers.ModelSerializer):
             'consultation', 'patient',
             'pulse', 'blood_pressure_systolic', 'blood_pressure_diastolic',
             'temperature', 'weight', 'height',
-            'primary_diagnosis', 'secondary_diagnosis', 'clinical_classification',
+            'primary_diagnosis', 'patient_previous_history', 'clinical_classification',
             'general_instructions', 'fluid_intake', 'diet_instructions', 'lifestyle_advice',
             'next_visit', 'follow_up_notes',
             'medications', 'vital_signs'
@@ -161,7 +161,7 @@ class PrescriptionUpdateSerializer(serializers.ModelSerializer):
         fields = [
             'pulse', 'blood_pressure_systolic', 'blood_pressure_diastolic',
             'temperature', 'weight', 'height',
-            'primary_diagnosis', 'secondary_diagnosis', 'clinical_classification',
+            'primary_diagnosis', 'patient_previous_history', 'clinical_classification',
             'general_instructions', 'fluid_intake', 'diet_instructions', 'lifestyle_advice',
             'next_visit', 'follow_up_notes',
             'is_draft', 'is_finalized',

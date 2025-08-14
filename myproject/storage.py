@@ -9,6 +9,10 @@ class MediaStorage(S3Boto3Storage):
     """Custom storage for media files"""
     file_overwrite = False
     default_acl = 'public-read'
+    bucket_name = 'edrspace'
+    endpoint_url = 'https://sgp1.digitaloceanspaces.com'
+    region_name = 'sgp1'
+    location = 'edrcontainer1'
     
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
@@ -22,6 +26,10 @@ class StaticStorage(S3Boto3Storage):
     """Custom storage for static files"""
     file_overwrite = True
     default_acl = 'public-read'
+    bucket_name = 'edrspace'
+    endpoint_url = 'https://sgp1.digitaloceanspaces.com'
+    region_name = 'sgp1'
+    location = 'edrcontainer1/static'
     
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)

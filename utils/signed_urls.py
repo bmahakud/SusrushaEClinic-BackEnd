@@ -56,7 +56,7 @@ def get_signed_media_url(file_path):
     Generate signed URL for media files (uploads)
     
     Args:
-        file_path (str): Relative path of the file (e.g., 'clinic_covers/profile.jpg')
+        file_path (str): Full URL or relative path of the file
     
     Returns:
         str: Signed URL for the media file
@@ -64,7 +64,21 @@ def get_signed_media_url(file_path):
     if not file_path:
         return None
     
-    # Ensure the file path includes the container prefix
+    # If it's a full DigitalOcean Spaces URL, extract the file key
+    if file_path.startswith('https://'):
+        # Extract the path after the domain and bucket
+        # URL format: https://bucket.region.digitaloceanspaces.com/container/path/to/file
+        try:
+            from urllib.parse import urlparse
+            parsed_url = urlparse(file_path)
+            # Remove the leading slash and get the path
+            file_key = parsed_url.path.lstrip('/')
+            return generate_signed_url(file_key)
+        except Exception as e:
+            print(f"Error parsing URL {file_path}: {e}")
+            return file_path  # Fallback to original URL
+    
+    # If it's a relative path, ensure it includes the container prefix
     aws_location = getattr(settings, 'AWS_LOCATION', 'edrcontainer1')
     if not file_path.startswith(f"{aws_location}/"):
         file_key = f"{aws_location}/{file_path}"
@@ -78,7 +92,7 @@ def get_signed_static_url(file_path):
     Generate signed URL for static files
     
     Args:
-        file_path (str): Relative path of the static file (e.g., 'static/css/style.css')
+        file_path (str): Full URL or relative path of the static file
     
     Returns:
         str: Signed URL for the static file
@@ -86,7 +100,21 @@ def get_signed_static_url(file_path):
     if not file_path:
         return None
     
-    # Ensure the file path includes the container prefix
+    # If it's a full DigitalOcean Spaces URL, extract the file key
+    if file_path.startswith('https://'):
+        # Extract the path after the domain and bucket
+        # URL format: https://bucket.region.digitaloceanspaces.com/container/path/to/file
+        try:
+            from urllib.parse import urlparse
+            parsed_url = urlparse(file_path)
+            # Remove the leading slash and get the path
+            file_key = parsed_url.path.lstrip('/')
+            return generate_signed_url(file_key)
+        except Exception as e:
+            print(f"Error parsing URL {file_path}: {e}")
+            return file_path  # Fallback to original URL
+    
+    # If it's a relative path, ensure it includes the container prefix
     aws_location = getattr(settings, 'AWS_LOCATION', 'edrcontainer1')
     if not file_path.startswith(f"{aws_location}/"):
         file_key = f"{aws_location}/{file_path}"

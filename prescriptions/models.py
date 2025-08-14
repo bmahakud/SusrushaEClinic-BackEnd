@@ -42,7 +42,7 @@ class Prescription(models.Model):
     
     # Diagnosis
     primary_diagnosis = models.TextField(blank=True, help_text="Primary diagnosis")
-    secondary_diagnosis = models.TextField(blank=True, help_text="Secondary diagnosis")
+    patient_previous_history = models.TextField(blank=True, help_text="Patient's previous medical history")
     clinical_classification = models.TextField(blank=True, help_text="Clinical classification (e.g., NYHA Class)")
     
     # General Instructions

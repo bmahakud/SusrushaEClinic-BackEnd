@@ -447,12 +447,7 @@ class PatientDocumentViewSet(ModelViewSet):
         
         if page is not None:
             serializer = self.get_serializer(page, many=True)
-            return self.get_paginated_response({
-                'success': True,
-                'data': serializer.data,
-                'message': 'Documents retrieved successfully',
-                'timestamp': timezone.now().isoformat()
-            })
+            return self.get_paginated_response(serializer.data)
         
         serializer = self.get_serializer(queryset, many=True)
         return Response({
