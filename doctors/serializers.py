@@ -20,13 +20,14 @@ class DoctorProfileSerializer(serializers.ModelSerializer):
     meeting_link = serializers.SerializerMethodField(read_only=True)
     profile_picture = serializers.SerializerMethodField()
     signature_url = serializers.SerializerMethodField()
+    signature = serializers.FileField(read_only=True)
     # Note: Using 'rating' field from model instead of 'average_rating'
     
     class Meta:
         model = DoctorProfile
         fields = [
             'id', 'user', 'user_name', 'user_phone', 'user_email',
-            'profile_picture', 'signature_url',
+            'profile_picture', 'signature_url', 'signature',
             'license_number', 'qualification', 'specialization', 'sub_specialization',
             'experience_years', 'consultation_fee', 'online_consultation_fee',
             'languages_spoken', 'bio', 'achievements',
@@ -49,13 +50,8 @@ class DoctorProfileSerializer(serializers.ModelSerializer):
     
     def get_signature_url(self, obj):
         """Generate signed URL for signature"""
-        print(f"🔍 get_signature_url called for obj: {obj}")
-        print(f"🔍 obj.signature: {obj.signature}")
         if obj.signature:
-            signed_url = get_signed_media_url(str(obj.signature))
-            print(f"🔍 Generated signed URL: {signed_url}")
-            return signed_url
-        print(f"🔍 No signature found, returning None")
+            return get_signed_media_url(str(obj.signature))
         return None
 
 
@@ -136,13 +132,8 @@ class DoctorProfileUpdateSerializer(serializers.ModelSerializer):
     
     def get_signature_url(self, obj):
         """Generate signed URL for signature"""
-        print(f"🔍 get_signature_url (update) called for obj: {obj}")
-        print(f"🔍 obj.signature: {obj.signature}")
         if obj.signature:
-            signed_url = get_signed_media_url(str(obj.signature))
-            print(f"🔍 Generated signed URL (update): {signed_url}")
-            return signed_url
-        print(f"🔍 No signature found (update), returning None")
+            return get_signed_media_url(str(obj.signature))
         return None
 
 
