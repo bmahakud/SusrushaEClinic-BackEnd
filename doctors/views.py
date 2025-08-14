@@ -176,7 +176,12 @@ class DoctorProfileViewSet(ModelViewSet):
         
         try:
             doctor_profile = DoctorProfile.objects.get(user=request.user)
-            serializer = DoctorProfileUpdateSerializer(doctor_profile, data=request.data, partial=True)
+            serializer = DoctorProfileUpdateSerializer(
+                doctor_profile, 
+                data=request.data, 
+                partial=True,
+                context={'request': request}
+            )
             
             if serializer.is_valid():
                 updated_profile = serializer.save()

@@ -110,6 +110,10 @@ class DoctorProfileUpdateSerializer(serializers.ModelSerializer):
         if not value or value.strip() == '':
             return value  # Allow empty/blank values for updates
             
+        # Check if context has request
+        if 'request' not in self.context:
+            return value  # Skip validation if no request context
+            
         user = self.context['request'].user
         # Check if license number already exists for another doctor
         if DoctorProfile.objects.filter(license_number=value).exclude(user=user).exists():
