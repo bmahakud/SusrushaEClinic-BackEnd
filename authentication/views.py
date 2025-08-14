@@ -1211,6 +1211,254 @@ class AdminStatsView(APIView):
         }, status=status.HTTP_200_OK)
 
 
+class AdminAccessOTPView(APIView):
+    """Send and verify OTP for admin access to sensitive patient data"""
+    permission_classes = [permissions.IsAuthenticated]
+    
+    @extend_schema(
+        request={
+            'application/json': {
+                'type': 'object',
+                'properties': {
+                    'action': {
+                        'type': 'string',
+                        'enum': ['send', 'verify'],
+                        'description': 'Action to perform: send OTP or verify OTP'
+                    },
+                    'patient_id': {
+                        'type': 'string',
+                        'description': 'Patient ID for which access is requested'
+                    },
+                    'otp': {
+                        'type': 'string',
+                        'description': '6-digit OTP code (required for verify action)'
+                    }
+                },
+                'required': ['action', 'patient_id']
+            }
+        },
+        responses={
+            200: {
+                'description': 'OTP sent successfully or verified successfully',
+                'content': {
+                    'application/json': {
+                        'schema': {
+                            'type': 'object',
+                            'properties': {
+                                'success': {'type': 'boolean'},
+                                'data': {'type': 'object'},
+                                'message': {'type': 'string'},
+                                'timestamp': {'type': 'string'}
+                            }
+                        }
+                    }
+                }
+            },
+            400: {
+                'description': 'Invalid request or OTP verification failed',
+                'content': {
+                    'application/json': {
+                        'schema': {
+                            'type': 'object',
+                            'properties': {
+                                'success': {'type': 'boolean'},
+                                'error': {'type': 'object'},
+                                'timestamp': {'type': 'string'}
+                            }
+                        }
+                    }
+                }
+            }
+        },
+        description="Send or verify OTP for admin access to sensitive patient medical records"
+    )
+    def post(self, request):
+        action = request.data.get('action')
+        patient_id = request.data.get('patient_id')
+        
+        # Validate admin role
+        if request.user.role not in ['admin', 'superadmin']:
+            return Response({
+                'success': False,
+                'error': {
+                    'code': 'ACCESS_DENIED',
+                    'message': 'Only admins can access patient medical records'
+                },
+                'timestamp': timezone.now().isoformat()
+            }, status=status.HTTP_403_FORBIDDEN)
+        
+        # Validate patient_id
+        if not patient_id:
+            return Response({
+                'success': False,
+                'error': {
+                    'code': 'MISSING_PATIENT_ID',
+                    'message': 'Patient ID is required'
+                },
+                'timestamp': timezone.now().isoformat()
+            }, status=status.HTTP_400_BAD_REQUEST)
+        
+        # Check if patient exists
+        try:
+            from patients.models import PatientProfile
+            patient = PatientProfile.objects.get(id=patient_id)
+        except PatientProfile.DoesNotExist:
+            return Response({
+                'success': False,
+                'error': {
+                    'code': 'PATIENT_NOT_FOUND',
+                    'message': 'Patient not found'
+                },
+                'timestamp': timezone.now().isoformat()
+            }, status=status.HTTP_404_NOT_FOUND)
+        
+        if action == 'send':
+            return self.send_admin_otp(request, patient)
+        elif action == 'verify':
+            return self.verify_admin_otp(request, patient)
+        else:
+            return Response({
+                'success': False,
+                'error': {
+                    'code': 'INVALID_ACTION',
+                    'message': 'Action must be either "send" or "verify"'
+                },
+                'timestamp': timezone.now().isoformat()
+            }, status=status.HTTP_400_BAD_REQUEST)
+    
+    def send_admin_otp(self, request, patient):
+        """Send OTP to admin for patient access"""
+        try:
+            # Generate OTP
+            otp_code = '123456'  # For testing - replace with actual OTP generation
+            
+            # Store OTP in session or cache for verification
+            request.session[f'admin_otp_{patient.id}'] = {
+                'otp': otp_code,
+                'admin_id': request.user.id,
+                'patient_id': patient.id,
+                'created_at': timezone.now().isoformat(),
+                'expires_at': (timezone.now() + timedelta(minutes=10)).isoformat()
+            }
+            
+            # In production, send OTP via SMS/Email
+            # For now, we'll just return it in the response for testing
+            
+            return Response({
+                'success': True,
+                'data': {
+                    'patient_id': patient.id,
+                    'patient_name': patient.user.name,
+                    'expires_in': 600,  # 10 minutes
+                    'otp_code': otp_code  # Remove this in production
+                },
+                'message': f'OTP sent to admin for accessing {patient.user.name}\'s medical records',
+                'timestamp': timezone.now().isoformat()
+            }, status=status.HTTP_200_OK)
+            
+        except Exception as e:
+            return Response({
+                'success': False,
+                'error': {
+                    'code': 'OTP_SEND_FAILED',
+                    'message': 'Failed to send OTP'
+                },
+                'timestamp': timezone.now().isoformat()
+            }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+    
+    def verify_admin_otp(self, request, patient):
+        """Verify OTP for admin access"""
+        otp = request.data.get('otp')
+        
+        if not otp:
+            return Response({
+                'success': False,
+                'error': {
+                    'code': 'MISSING_OTP',
+                    'message': 'OTP is required for verification'
+                },
+                'timestamp': timezone.now().isoformat()
+            }, status=status.HTTP_400_BAD_REQUEST)
+        
+        # Get stored OTP from session
+        stored_otp_data = request.session.get(f'admin_otp_{patient.id}')
+        
+        if not stored_otp_data:
+            return Response({
+                'success': False,
+                'error': {
+                    'code': 'OTP_NOT_FOUND',
+                    'message': 'No OTP found. Please request a new OTP.'
+                },
+                'timestamp': timezone.now().isoformat()
+            }, status=status.HTTP_400_BAD_REQUEST)
+        
+        # Check if OTP is expired
+        expires_at = timezone.datetime.fromisoformat(stored_otp_data['expires_at'].replace('Z', '+00:00'))
+        if timezone.now() > expires_at:
+            # Remove expired OTP
+            del request.session[f'admin_otp_{patient.id}']
+            return Response({
+                'success': False,
+                'error': {
+                    'code': 'OTP_EXPIRED',
+                    'message': 'OTP has expired. Please request a new OTP.'
+                },
+                'timestamp': timezone.now().isoformat()
+            }, status=status.HTTP_400_BAD_REQUEST)
+        
+        # Check if OTP matches
+        if stored_otp_data['otp'] != otp:
+            return Response({
+                'success': False,
+                'error': {
+                    'code': 'INVALID_OTP',
+                    'message': 'Invalid OTP. Please try again.'
+                },
+                'timestamp': timezone.now().isoformat()
+            }, status=status.HTTP_400_BAD_REQUEST)
+        
+        # OTP is valid - remove it from session and grant access
+        del request.session[f'admin_otp_{patient.id}']
+        
+        # Log the access for audit purposes
+        try:
+            from patients.models import PatientAccessLog
+            PatientAccessLog.objects.create(
+                patient=patient,
+                admin=request.user,
+                access_type='medical_records',
+                timestamp=timezone.now(),
+                ip_address=self.get_client_ip(request),
+                user_agent=request.META.get('HTTP_USER_AGENT', '')[:255]
+            )
+        except Exception as e:
+            # Log error but don't fail the request
+            print(f"Failed to log patient access: {e}")
+        
+        return Response({
+            'success': True,
+            'data': {
+                'patient_id': patient.id,
+                'patient_name': patient.user.name,
+                'access_granted': True,
+                'access_type': 'medical_records',
+                'expires_at': (timezone.now() + timedelta(hours=1)).isoformat()
+            },
+            'message': f'Access granted to {patient.user.name}\'s medical records',
+            'timestamp': timezone.now().isoformat()
+        }, status=status.HTTP_200_OK)
+    
+    def get_client_ip(self, request):
+        """Get client IP address"""
+        x_forwarded_for = request.META.get('HTTP_X_FORWARDED_FOR')
+        if x_forwarded_for:
+            ip = x_forwarded_for.split(',')[0]
+        else:
+            ip = request.META.get('REMOTE_ADDR')
+        return ip
+
+
 @api_view(['GET'])
 @permission_classes([permissions.AllowAny])
 def health_check(request):

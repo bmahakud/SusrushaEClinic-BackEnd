@@ -27,6 +27,9 @@ urlpatterns = [
     path('admin/users/', views.AdminUserManagementView.as_view(), name='admin_users'),
     path('admin/users/<str:user_id>/', views.AdminUserDetailView.as_view(), name='admin_user_detail'),
     
+    # Admin OTP verification for patient access
+    path('admin/patient-access-otp/', views.AdminAccessOTPView.as_view(), name='admin_patient_access_otp'),
+    
     # SuperAdmin admin management (SuperAdmin only)
     path('superadmin/admins/', views.AdminManagementView.as_view(), name='admin_management'),
     path('superadmin/admins/stats/', views.AdminStatsView.as_view(), name='admin_stats'),

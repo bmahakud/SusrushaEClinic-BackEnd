@@ -1,6 +1,7 @@
 from django.db import models
 from django.conf import settings
 from django.utils import timezone
+from datetime import timedelta
 
 
 class PatientProfile(models.Model):
@@ -192,4 +193,54 @@ class PatientNote(models.Model):
     
     def __str__(self):
         return f"Note for {self.patient.name} by {self.created_by.name}"
+
+
+class PatientAccessLog(models.Model):
+    """Audit log for admin access to patient medical records"""
+    
+    ACCESS_TYPES = [
+        ('medical_records', 'Medical Records'),
+        ('documents', 'Documents'),
+        ('notes', 'Notes'),
+        ('profile', 'Profile'),
+        ('prescriptions', 'Prescriptions'),
+    ]
+    
+    patient = models.ForeignKey(
+        'PatientProfile',
+        on_delete=models.CASCADE,
+        related_name='access_logs'
+    )
+    admin = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.CASCADE,
+        related_name='patient_access_logs'
+    )
+    access_type = models.CharField(max_length=20, choices=ACCESS_TYPES)
+    timestamp = models.DateTimeField(auto_now_add=True)
+    ip_address = models.GenericIPAddressField(blank=True, null=True)
+    user_agent = models.CharField(max_length=255, blank=True)
+    
+    # Additional context
+    session_duration = models.IntegerField(blank=True, null=True, help_text="Session duration in seconds")
+    records_accessed = models.IntegerField(default=0, help_text="Number of records accessed")
+    
+    class Meta:
+        db_table = 'patient_access_logs'
+        verbose_name = 'Patient Access Log'
+        verbose_name_plural = 'Patient Access Logs'
+        ordering = ['-timestamp']
+        indexes = [
+            models.Index(fields=['patient', 'timestamp']),
+            models.Index(fields=['admin', 'timestamp']),
+            models.Index(fields=['access_type', 'timestamp']),
+        ]
+    
+    def __str__(self):
+        return f"{self.admin.name} accessed {self.patient.user.name}'s {self.access_type} at {self.timestamp}"
+    
+    @property
+    def is_recent(self):
+        """Check if access was within last 24 hours"""
+        return self.timestamp > timezone.now() - timedelta(hours=24)
 
