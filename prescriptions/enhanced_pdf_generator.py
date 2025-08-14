@@ -363,8 +363,8 @@ class WPDFGenerator:
             diagnosis_sections.append(f"Primary Diagnosis: {self.prescription.primary_diagnosis}")
         
         # Secondary Diagnosis
-        if self.prescription.secondary_diagnosis:
-            diagnosis_sections.append(f"Secondary Diagnosis: {self.prescription.secondary_diagnosis}")
+        if self.prescription.patient_previous_history:
+            diagnosis_sections.append(f"Patient Previous History: {self.prescription.patient_previous_history}")
         
         # Clinical Classification
         if self.prescription.clinical_classification:

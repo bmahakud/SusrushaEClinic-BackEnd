@@ -634,7 +634,7 @@ class ConsultationDetailSerializer(serializers.ModelSerializer):
                     'issued_date': prescription.issued_date,
                     'issued_time': prescription.issued_time,
                     'primary_diagnosis': prescription.primary_diagnosis,
-                    'secondary_diagnosis': prescription.secondary_diagnosis,
+                    'patient_previous_history': prescription.patient_previous_history,
                     'general_instructions': prescription.general_instructions,
                     'diet_instructions': prescription.diet_instructions,
                     'lifestyle_advice': prescription.lifestyle_advice,

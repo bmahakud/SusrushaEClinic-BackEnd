@@ -325,16 +325,16 @@ class ProfessionalPrescriptionPDFGenerator:
                 content.extend(self._create_info_section("VITAL SIGNS", vital_data, styles))
         
         # Diagnosis
-        if self.prescription.primary_diagnosis or self.prescription.secondary_diagnosis:
+        if self.prescription.primary_diagnosis or self.prescription.patient_previous_history:
             content.append(Paragraph("DIAGNOSIS", section_style))
             
             diagnosis_text = ""
             if self.prescription.primary_diagnosis:
                 diagnosis_text += f"<b>Primary:</b> {self.prescription.primary_diagnosis}"
-            if self.prescription.secondary_diagnosis:
+            if self.prescription.patient_previous_history:
                 if diagnosis_text:
                     diagnosis_text += "<br/>"
-                diagnosis_text += f"<b>Secondary:</b> {self.prescription.secondary_diagnosis}"
+                diagnosis_text += f"<b>Patient History:</b> {self.prescription.patient_previous_history}"
             if self.prescription.clinical_classification:
                 if diagnosis_text:
                     diagnosis_text += "<br/>"

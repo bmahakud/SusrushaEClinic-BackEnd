@@ -44,7 +44,7 @@ def test_professional_pdf_design():
                 doctor=doctor,
                 patient=patient,
                 primary_diagnosis="DIABETES MELLITUS TYPE 2, DILATED CARDIOMYOPATHY, MODERATE LV DYSFUNCTION",
-                secondary_diagnosis="NYHA CLASS III, LBBB",
+                patient_previous_history="NYHA CLASS III, LBBB",
                 general_instructions="Continue regular monitoring of blood sugar levels",
                 fluid_intake="1.2LIT/DAY",
                 diet_instructions="Low sodium diet, avoid processed foods",

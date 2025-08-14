@@ -44,7 +44,7 @@ def test_prescription_flow():
         doctor=doctor,
         patient=patient,
         primary_diagnosis='Hypertension Stage 2 with Diabetes Type 2',
-        secondary_diagnosis='Mild obesity and hyperlipidemia',
+        patient_previous_history='Mild obesity and hyperlipidemia',
         clinical_classification='NYHA Class I',
         general_instructions='Take all medications regularly as prescribed. Monitor blood pressure twice daily. Check blood sugar levels before meals and at bedtime.',
         fluid_intake='2-3 liters of water daily',

@@ -36,7 +36,7 @@ class PrescriptionAdmin(admin.ModelAdmin):
     ]
     search_fields = [
         'patient__name', 'patient__phone', 'doctor__name', 
-        'primary_diagnosis', 'secondary_diagnosis'
+        'primary_diagnosis', 'patient_previous_history'
     ]
     readonly_fields = ['issued_date', 'issued_time', 'created_at', 'updated_at']
     
@@ -59,7 +59,7 @@ class PrescriptionAdmin(admin.ModelAdmin):
         ('Diagnosis', {
             'fields': (
                 'primary_diagnosis',
-                'secondary_diagnosis',
+                'patient_previous_history',
                 'clinical_classification'
             )
         }),

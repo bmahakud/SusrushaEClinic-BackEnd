@@ -47,7 +47,7 @@ def show_data_format():
         print(f"   Doctor: {prescription.doctor.name} ({prescription.doctor.id})")
         print(f"   Consultation: {prescription.consultation.id if prescription.consultation else 'None'}")
         print(f"   Primary Diagnosis: {prescription.primary_diagnosis}")
-        print(f"   Secondary Diagnosis: {prescription.secondary_diagnosis}")
+        print(f"   Patient Previous History: {prescription.patient_previous_history}")
         print(f"   Clinical Classification: {prescription.clinical_classification}")
         print(f"   Status: {'Finalized' if prescription.is_finalized else 'Draft'}")
         print(f"   Issued Date: {prescription.issued_date}")
@@ -109,7 +109,7 @@ def show_api_format():
                         "scheduled_time": prescription.consultation.scheduled_time.isoformat() if prescription.consultation else None
                     },
                     "primary_diagnosis": prescription.primary_diagnosis,
-                    "secondary_diagnosis": prescription.secondary_diagnosis,
+                    "patient_previous_history": prescription.patient_previous_history,
                     "issued_date": prescription.issued_date.isoformat(),
                     "issued_time": prescription.issued_time.isoformat(),
                     "is_draft": prescription.is_draft,
