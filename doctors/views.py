@@ -176,6 +176,13 @@ class DoctorProfileViewSet(ModelViewSet):
         
         try:
             doctor_profile = DoctorProfile.objects.get(user=request.user)
+            
+            # Handle profile picture update for user
+            if 'profile_picture' in request.FILES:
+                request.user.profile_picture = request.FILES['profile_picture']
+                request.user.save()
+            
+            # Handle other profile fields
             serializer = DoctorProfileUpdateSerializer(
                 doctor_profile, 
                 data=request.data, 
