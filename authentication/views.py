@@ -11,6 +11,11 @@ from drf_spectacular.types import OpenApiTypes
 from django.db.models import Q
 from django.db.models import Sum
 from datetime import timedelta
+import threading
+
+# In-memory storage for OTP (fallback for testing)
+_otp_storage = {}
+_otp_storage_lock = threading.Lock()
 
 from .models import User, UserSession
 from .serializers import (
@@ -1301,7 +1306,9 @@ class AdminAccessOTPView(APIView):
         # Check if patient exists
         try:
             from patients.models import PatientProfile
-            patient = PatientProfile.objects.get(id=patient_id)
+            # Convert patient_id to string if it's a number
+            patient_id_str = str(patient_id)
+            patient = PatientProfile.objects.get(id=patient_id_str)
         except PatientProfile.DoesNotExist:
             return Response({
                 'success': False,
@@ -1332,14 +1339,27 @@ class AdminAccessOTPView(APIView):
             # Generate OTP
             otp_code = '123456'  # For testing - replace with actual OTP generation
             
-            # Store OTP in session or cache for verification
-            request.session[f'admin_otp_{patient.id}'] = {
+            # Store OTP data
+            otp_data = {
                 'otp': otp_code,
                 'admin_id': request.user.id,
                 'patient_id': patient.id,
                 'created_at': timezone.now().isoformat(),
                 'expires_at': (timezone.now() + timedelta(minutes=10)).isoformat()
             }
+            
+            # Store OTP in session
+            request.session[f'admin_otp_{patient.id}'] = otp_data
+            request.session.modified = True
+            request.session.save()
+            
+            # Also store in memory as fallback
+            with _otp_storage_lock:
+                _otp_storage[f'admin_otp_{patient.id}'] = otp_data
+            
+            # Debug: Print session data
+            print(f"DEBUG: Stored OTP for patient {patient.id}: {request.session.get(f'admin_otp_{patient.id}')}")
+            print(f"DEBUG: Memory storage keys: {list(_otp_storage.keys())}")
             
             # In production, send OTP via SMS/Email
             # For now, we'll just return it in the response for testing
@@ -1357,6 +1377,7 @@ class AdminAccessOTPView(APIView):
             }, status=status.HTTP_200_OK)
             
         except Exception as e:
+            print(f"DEBUG: Error sending OTP: {e}")
             return Response({
                 'success': False,
                 'error': {
@@ -1380,8 +1401,19 @@ class AdminAccessOTPView(APIView):
                 'timestamp': timezone.now().isoformat()
             }, status=status.HTTP_400_BAD_REQUEST)
         
-        # Get stored OTP from session
+        # Debug: Print all session keys
+        print(f"DEBUG: All session keys: {list(request.session.keys())}")
+        print(f"DEBUG: Looking for key: admin_otp_{patient.id}")
+        
+        # Get stored OTP from session first
         stored_otp_data = request.session.get(f'admin_otp_{patient.id}')
+        print(f"DEBUG: Session OTP data: {stored_otp_data}")
+        
+        # If not in session, try memory storage
+        if not stored_otp_data:
+            with _otp_storage_lock:
+                stored_otp_data = _otp_storage.get(f'admin_otp_{patient.id}')
+            print(f"DEBUG: Memory OTP data: {stored_otp_data}")
         
         if not stored_otp_data:
             return Response({
@@ -1396,8 +1428,15 @@ class AdminAccessOTPView(APIView):
         # Check if OTP is expired
         expires_at = timezone.datetime.fromisoformat(stored_otp_data['expires_at'].replace('Z', '+00:00'))
         if timezone.now() > expires_at:
-            # Remove expired OTP
-            del request.session[f'admin_otp_{patient.id}']
+            # Remove expired OTP from both session and memory
+            if f'admin_otp_{patient.id}' in request.session:
+                del request.session[f'admin_otp_{patient.id}']
+                request.session.modified = True
+            
+            with _otp_storage_lock:
+                if f'admin_otp_{patient.id}' in _otp_storage:
+                    del _otp_storage[f'admin_otp_{patient.id}']
+            
             return Response({
                 'success': False,
                 'error': {
@@ -1418,8 +1457,14 @@ class AdminAccessOTPView(APIView):
                 'timestamp': timezone.now().isoformat()
             }, status=status.HTTP_400_BAD_REQUEST)
         
-        # OTP is valid - remove it from session and grant access
-        del request.session[f'admin_otp_{patient.id}']
+        # OTP is valid - remove it from session and memory, then grant access
+        if f'admin_otp_{patient.id}' in request.session:
+            del request.session[f'admin_otp_{patient.id}']
+            request.session.modified = True
+        
+        with _otp_storage_lock:
+            if f'admin_otp_{patient.id}' in _otp_storage:
+                del _otp_storage[f'admin_otp_{patient.id}']
         
         # Log the access for audit purposes
         try:
