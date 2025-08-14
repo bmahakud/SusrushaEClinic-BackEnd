@@ -22,7 +22,7 @@ from .models import (
     DoctorDocument, DoctorSchedule, DoctorReview, DoctorSlot, DoctorStatus
 )
 from .serializers import (
-    DoctorProfileSerializer, DoctorProfileCreateSerializer,
+    DoctorProfileSerializer, DoctorProfileCreateSerializer, DoctorProfileUpdateSerializer,
     DoctorEducationSerializer, DoctorExperienceSerializer,
     DoctorDocumentSerializer, DoctorScheduleSerializer,
     DoctorReviewSerializer, DoctorListSerializer, DoctorSearchSerializer,
