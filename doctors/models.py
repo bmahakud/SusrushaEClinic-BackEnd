@@ -9,20 +9,23 @@ class DoctorProfile(models.Model):
     """Extended profile for doctors"""
     
     SPECIALTIES = [
-        ('cardiology', 'Cardiology'),
-        ('dermatology', 'Dermatology'),
-        ('endocrinology', 'Endocrinology'),
-        ('gastroenterology', 'Gastroenterology'),
-        ('general_medicine', 'General Medicine'),
-        ('gynecology', 'Gynecology'),
-        ('neurology', 'Neurology'),
-        ('oncology', 'Oncology'),
-        ('orthopedics', 'Orthopedics'),
-        ('pediatrics', 'Pediatrics'),
-        ('psychiatry', 'Psychiatry'),
-        ('pulmonology', 'Pulmonology'),
-        ('urology', 'Urology'),
-        ('other', 'Other'),
+        ('Cardiology', 'Cardiology'),
+        ('Dermatology', 'Dermatology'),
+        ('Endocrinology', 'Endocrinology'),
+        ('Gastroenterology', 'Gastroenterology'),
+        ('General Medicine', 'General Medicine'),
+        ('Gynecology', 'Gynecology'),
+        ('Neurology', 'Neurology'),
+        ('Oncology', 'Oncology'),
+        ('Ophthalmology', 'Ophthalmology'),
+        ('Orthopedics', 'Orthopedics'),
+        ('Pediatrics', 'Pediatrics'),
+        ('Psychiatry', 'Psychiatry'),
+        ('Pulmonology', 'Pulmonology'),
+        ('Radiology', 'Radiology'),
+        ('Surgery', 'Surgery'),
+        ('Urology', 'Urology'),
+        ('Other', 'Other'),
     ]
     
     user = models.OneToOneField(
