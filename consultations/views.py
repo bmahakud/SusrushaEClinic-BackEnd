@@ -580,15 +580,15 @@ class ConsultationViewSet(ModelViewSet):
     def calculate_available_slots(self, request):
         """Calculate available slots dynamically based on doctor availability and clinic duration"""
         doctor_id = request.query_params.get('doctor_id')
-        clinic_id = request.query_params.get('clinic_id')
+        clinic_id = request.query_params.get('clinic_id')  # Made optional
         date = request.query_params.get('date')
         
-        if not doctor_id or not clinic_id or not date:
+        if not doctor_id or not date:
             return Response({
                 'success': False,
                 'error': {
                     'code': 'MISSING_PARAMETERS',
-                    'message': 'doctor_id, clinic_id, and date are required'
+                    'message': 'doctor_id and date are required'
                 },
                 'timestamp': timezone.now().isoformat()
             }, status=status.HTTP_400_BAD_REQUEST)
@@ -613,7 +613,15 @@ class ConsultationViewSet(ModelViewSet):
             from authentication.models import User
             
             doctor = User.objects.get(id=doctor_id, role='doctor')
-            clinic = Clinic.objects.get(id=clinic_id)
+            
+            # Handle clinic_id - if not provided, use a default clinic or get from doctor's profile
+            if clinic_id:
+                try:
+                    clinic = Clinic.objects.get(id=clinic_id)
+                except Clinic.DoesNotExist:
+                    clinic = None
+            else:
+                clinic = None
             
             # Get doctor's consultation duration (default to 5 minutes if not set)
             try:
@@ -697,7 +705,7 @@ class ConsultationViewSet(ModelViewSet):
                             'start_time': slot_start_time.strftime('%H:%M'),
                             'end_time': slot_end_time_obj.strftime('%H:%M'),
                             'duration_minutes': consultation_duration,
-                            'clinic_name': clinic.name,
+                            'clinic_name': clinic.name if clinic else 'Default Clinic',
                             'doctor_name': doctor.name,
                             'is_available': True
                         }
@@ -719,7 +727,7 @@ class ConsultationViewSet(ModelViewSet):
                     'doctor_consultation_duration': consultation_duration,  # Add explicit field for clarity
                     'date': date,
                     'doctor_name': doctor.name,
-                    'clinic_name': clinic.name
+                    'clinic_name': clinic.name if clinic else 'Default Clinic'
                 },
                 'message': f'Calculated {len(calculated_slots)} available slots for {date}',
                 'timestamp': timezone.now().isoformat()
@@ -734,15 +742,7 @@ class ConsultationViewSet(ModelViewSet):
                 },
                 'timestamp': timezone.now().isoformat()
             }, status=status.HTTP_404_NOT_FOUND)
-        except Clinic.DoesNotExist:
-            return Response({
-                'success': False,
-                'error': {
-                    'code': 'CLINIC_NOT_FOUND',
-                    'message': 'Clinic not found'
-                },
-                'timestamp': timezone.now().isoformat()
-            }, status=status.HTTP_404_NOT_FOUND)
+
         except Exception as e:
             return Response({
                 'success': False,
