@@ -496,6 +496,97 @@ class ConsultationViewSet(ModelViewSet):
             'timestamp': timezone.now().isoformat()
         }, status=status.HTTP_200_OK)
 
+    @action(detail=False, methods=['get'], url_path='clinic-stats')
+    def clinic_statistics(self, request):
+        """Get consultation statistics for a specific clinic"""
+        # Check permissions
+        if request.user.role not in ['admin', 'superadmin']:
+            return Response({
+                'success': False,
+                'error': {
+                    'code': 'PERMISSION_DENIED',
+                    'message': 'Only admin and superadmin can access this endpoint'
+                },
+                'timestamp': timezone.now().isoformat()
+            }, status=status.HTTP_403_FORBIDDEN)
+        
+        # Get clinic_id from query params or use admin's assigned clinic
+        clinic_id = request.query_params.get('clinic_id')
+        
+        if request.user.role == 'admin':
+            # For admin users, use their assigned clinic if no clinic_id provided
+            if not clinic_id:
+                try:
+                    clinic_id = request.user.administered_clinic.id if request.user.administered_clinic else None
+                except AttributeError:
+                    return Response({
+                        'success': False,
+                        'error': {
+                            'code': 'NO_CLINIC_ASSIGNED',
+                            'message': 'Admin is not assigned to any clinic'
+                        },
+                        'timestamp': timezone.now().isoformat()
+                    }, status=status.HTTP_400_BAD_REQUEST)
+        
+        if not clinic_id:
+            return Response({
+                'success': False,
+                'error': {
+                    'code': 'MISSING_CLINIC_ID',
+                    'message': 'clinic_id is required'
+                },
+                'timestamp': timezone.now().isoformat()
+            }, status=status.HTTP_400_BAD_REQUEST)
+        
+        try:
+            # Get consultations for the specific clinic
+            consultations = Consultation.objects.filter(clinic_id=clinic_id)
+            
+            # Calculate statistics
+            total_consultations = consultations.count()
+            scheduled_consultations = consultations.filter(status='scheduled').count()
+            checked_in_consultations = consultations.filter(status='patient_checked_in').count()
+            ready_consultations = consultations.filter(status='ready_for_consultation').count()
+            in_progress_consultations = consultations.filter(status='in_progress').count()
+            completed_consultations = consultations.filter(status='completed').count()
+            
+            # Get clinic name
+            from eclinic.models import Clinic
+            try:
+                clinic = Clinic.objects.get(id=clinic_id)
+                clinic_name = clinic.name
+            except Clinic.DoesNotExist:
+                clinic_name = f"Clinic {clinic_id}"
+            
+            stats = {
+                'clinic_id': clinic_id,
+                'clinic_name': clinic_name,
+                'total': total_consultations,
+                'scheduled': scheduled_consultations,
+                'checked_in': checked_in_consultations,
+                'ready': ready_consultations,
+                'in_progress': in_progress_consultations,
+                'completed': completed_consultations,
+                'timestamp': timezone.now().isoformat()
+            }
+            
+            return Response({
+                'success': True,
+                'data': stats,
+                'message': f'Statistics for {clinic_name}',
+                'timestamp': timezone.now().isoformat()
+            }, status=status.HTTP_200_OK)
+            
+        except Exception as e:
+            return Response({
+                'success': False,
+                'error': {
+                    'code': 'CALCULATION_ERROR',
+                    'message': f'Error calculating statistics: {str(e)}'
+                },
+                'timestamp': timezone.now().isoformat()
+            }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+
     @extend_schema(
         parameters=[
             OpenApiParameter('clinic_id', OpenApiTypes.STR, description='Clinic ID to filter consultations', required=True),
