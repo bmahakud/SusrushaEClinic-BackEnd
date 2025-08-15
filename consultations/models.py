@@ -11,6 +11,8 @@ class Consultation(models.Model):
     
     STATUS_CHOICES = [
         ('scheduled', 'Scheduled'),
+        ('patient_checked_in', 'Patient Checked In'),
+        ('ready_for_consultation', 'Ready for Consultation'),
         ('in_progress', 'In Progress'),
         ('completed', 'Completed'),
         ('cancelled', 'Cancelled'),
@@ -52,9 +54,29 @@ class Consultation(models.Model):
     symptoms = models.TextField(blank=True)
     
     # Status and Progress
-    status = models.CharField(max_length=20, choices=STATUS_CHOICES, default='scheduled')
+    status = models.CharField(max_length=25, choices=STATUS_CHOICES, default='scheduled')
     actual_start_time = models.DateTimeField(null=True, blank=True)
     actual_end_time = models.DateTimeField(null=True, blank=True)
+    
+    # Check-in Information
+    checked_in_at = models.DateTimeField(null=True, blank=True, help_text="When patient was checked in")
+    checked_in_by = models.ForeignKey(
+        settings.AUTH_USER_MODEL, 
+        on_delete=models.SET_NULL, 
+        null=True, 
+        blank=True,
+        related_name='check_ins_performed',
+        help_text="Admin who checked in the patient"
+    )
+    ready_for_consultation_at = models.DateTimeField(null=True, blank=True, help_text="When patient was marked ready for consultation")
+    ready_marked_by = models.ForeignKey(
+        settings.AUTH_USER_MODEL, 
+        on_delete=models.SET_NULL, 
+        null=True, 
+        blank=True,
+        related_name='ready_markings_performed',
+        help_text="Admin who marked patient as ready"
+    )
     
     # Fees and Payment
     consultation_fee = models.DecimalField(max_digits=10, decimal_places=2)
@@ -169,6 +191,45 @@ class Consultation(models.Model):
     def is_overdue(self):
         """Check if consultation is overdue"""
         return self.scheduled_datetime < timezone.now() and self.status == 'scheduled'
+    
+    @property
+    def is_checked_in(self):
+        """Check if patient is checked in"""
+        return self.status in ['patient_checked_in', 'ready_for_consultation', 'in_progress', 'completed']
+    
+    @property
+    def is_ready_for_consultation(self):
+        """Check if patient is ready for consultation"""
+        return self.status in ['ready_for_consultation', 'in_progress', 'completed']
+    
+    def check_in_patient(self, checked_in_by):
+        """Mark patient as checked in"""
+        if self.status == 'scheduled':
+            self.status = 'patient_checked_in'
+            self.checked_in_at = timezone.now()
+            self.checked_in_by = checked_in_by
+            self.save()
+            return True
+        return False
+    
+    def mark_ready_for_consultation(self, marked_by):
+        """Mark patient as ready for consultation"""
+        if self.status in ['scheduled', 'patient_checked_in']:
+            self.status = 'ready_for_consultation'
+            self.ready_for_consultation_at = timezone.now()
+            self.ready_marked_by = marked_by
+            self.save()
+            return True
+        return False
+    
+    def start_consultation(self):
+        """Start the consultation"""
+        if self.status in ['ready_for_consultation', 'patient_checked_in']:
+            self.status = 'in_progress'
+            self.actual_start_time = timezone.now()
+            self.save()
+            return True
+        return False
 
 
 class ConsultationSymptom(models.Model):

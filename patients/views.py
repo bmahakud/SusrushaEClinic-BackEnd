@@ -21,6 +21,8 @@ from .serializers import (
     PatientNoteSerializer, PatientNoteCreateSerializer,
     PatientListSerializer, PatientSearchSerializer, PatientStatsSerializer
 )
+from consultations.models import Consultation
+from consultations.serializers import ConsultationListSerializer
 
 
 class PatientPagination(PageNumberPagination):
@@ -364,26 +366,50 @@ class PatientMedicalRecordViewSet(ModelViewSet):
     )
     def create(self, request, patient_id=None):
         """Create medical record for a patient"""
-        serializer = self.get_serializer(data=request.data)
-        if serializer.is_valid():
-            medical_record = serializer.save()
-            response_serializer = MedicalRecordSerializer(medical_record)
+        try:
+            # Check if patient exists
+            from authentication.models import User
+            patient = User.objects.filter(id=patient_id, role='patient').first()
+            if not patient:
+                return Response({
+                    'success': False,
+                    'error': {
+                        'code': 'PATIENT_NOT_FOUND',
+                        'message': 'Patient not found'
+                    },
+                    'timestamp': timezone.now().isoformat()
+                }, status=status.HTTP_404_NOT_FOUND)
+            
+            serializer = self.get_serializer(data=request.data)
+            if serializer.is_valid():
+                medical_record = serializer.save(patient_id=patient_id)
+                response_serializer = MedicalRecordSerializer(medical_record)
+                return Response({
+                    'success': True,
+                    'data': response_serializer.data,
+                    'message': 'Medical record created successfully',
+                    'timestamp': timezone.now().isoformat()
+                }, status=status.HTTP_201_CREATED)
+            
             return Response({
-                'success': True,
-                'data': response_serializer.data,
-                'message': 'Medical record created successfully',
+                'success': False,
+                'error': {
+                    'code': 'VALIDATION_ERROR',
+                    'message': 'Invalid data provided',
+                    'details': serializer.errors
+                },
                 'timestamp': timezone.now().isoformat()
-            }, status=status.HTTP_201_CREATED)
-        
-        return Response({
-            'success': False,
-            'error': {
-                'code': 'VALIDATION_ERROR',
-                'message': 'Invalid data provided',
-                'details': serializer.errors
-            },
-            'timestamp': timezone.now().isoformat()
-        }, status=status.HTTP_400_BAD_REQUEST)
+            }, status=status.HTTP_400_BAD_REQUEST)
+            
+        except Exception as e:
+            return Response({
+                'success': False,
+                'error': {
+                    'code': 'CREATE_ERROR',
+                    'message': str(e)
+                },
+                'timestamp': timezone.now().isoformat()
+            }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
 
     @extend_schema(
         responses={200: dict, 404: dict},
@@ -464,26 +490,50 @@ class PatientDocumentViewSet(ModelViewSet):
     )
     def create(self, request, patient_id=None):
         """Upload document for a patient"""
-        serializer = self.get_serializer(data=request.data)
-        if serializer.is_valid():
-            document = serializer.save()
-            response_serializer = PatientDocumentSerializer(document)
+        try:
+            # Check if patient exists
+            from authentication.models import User
+            patient = User.objects.filter(id=patient_id, role='patient').first()
+            if not patient:
+                return Response({
+                    'success': False,
+                    'error': {
+                        'code': 'PATIENT_NOT_FOUND',
+                        'message': 'Patient not found'
+                    },
+                    'timestamp': timezone.now().isoformat()
+                }, status=status.HTTP_404_NOT_FOUND)
+            
+            serializer = self.get_serializer(data=request.data)
+            if serializer.is_valid():
+                document = serializer.save()
+                response_serializer = PatientDocumentSerializer(document)
+                return Response({
+                    'success': True,
+                    'data': response_serializer.data,
+                    'message': 'Document uploaded successfully',
+                    'timestamp': timezone.now().isoformat()
+                }, status=status.HTTP_201_CREATED)
+            
             return Response({
-                'success': True,
-                'data': response_serializer.data,
-                'message': 'Document uploaded successfully',
+                'success': False,
+                'error': {
+                    'code': 'VALIDATION_ERROR',
+                    'message': 'Invalid data provided',
+                    'details': serializer.errors
+                },
                 'timestamp': timezone.now().isoformat()
-            }, status=status.HTTP_201_CREATED)
-        
-        return Response({
-            'success': False,
-            'error': {
-                'code': 'VALIDATION_ERROR',
-                'message': 'Invalid data provided',
-                'details': serializer.errors
-            },
-            'timestamp': timezone.now().isoformat()
-        }, status=status.HTTP_400_BAD_REQUEST)
+            }, status=status.HTTP_400_BAD_REQUEST)
+            
+        except Exception as e:
+            return Response({
+                'success': False,
+                'error': {
+                    'code': 'UPLOAD_ERROR',
+                    'message': str(e)
+                },
+                'timestamp': timezone.now().isoformat()
+            }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
 
     @extend_schema(
         responses={200: dict, 404: dict},
@@ -630,6 +680,119 @@ class PatientNoteViewSet(ModelViewSet):
                 'success': False,
                 'error': {
                     'code': 'DELETE_ERROR',
+                    'message': str(e)
+                },
+                'timestamp': timezone.now().isoformat()
+            }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+
+
+class PatientConsultationView(APIView):
+    """View for fetching patient consultations"""
+    permission_classes = [permissions.IsAuthenticated]
+    
+    @extend_schema(
+        parameters=[
+            OpenApiParameter('status', OpenApiTypes.STR, description='Filter by consultation status'),
+            OpenApiParameter('doctor', OpenApiTypes.STR, description='Filter by doctor ID'),
+            OpenApiParameter('date_from', OpenApiTypes.DATE, description='Filter from date (YYYY-MM-DD)'),
+            OpenApiParameter('date_to', OpenApiTypes.DATE, description='Filter to date (YYYY-MM-DD)'),
+            OpenApiParameter('ordering', OpenApiTypes.STR, description='Order by field (e.g., -created_at)'),
+            OpenApiParameter('page', OpenApiTypes.INT, description='Page number'),
+            OpenApiParameter('page_size', OpenApiTypes.INT, description='Number of items per page'),
+        ],
+        responses={200: ConsultationListSerializer(many=True)},
+        description="Get consultations for a specific patient"
+    )
+    def get(self, request, patient_id=None):
+        """Get consultations for a specific patient"""
+        try:
+            # Check if patient exists
+            from authentication.models import User
+            patient = User.objects.filter(id=patient_id, role='patient').first()
+            if not patient:
+                return Response({
+                    'success': False,
+                    'error': {
+                        'code': 'PATIENT_NOT_FOUND',
+                        'message': 'Patient not found'
+                    },
+                    'timestamp': timezone.now().isoformat()
+                }, status=status.HTTP_404_NOT_FOUND)
+            
+            # Get consultations for the patient
+            queryset = Consultation.objects.filter(patient=patient).select_related(
+                'doctor', 'patient', 'clinic'
+            )
+            
+            # Apply filters
+            status_filter = request.query_params.get('status')
+            if status_filter:
+                queryset = queryset.filter(status=status_filter)
+            
+            doctor_filter = request.query_params.get('doctor')
+            if doctor_filter:
+                queryset = queryset.filter(doctor_id=doctor_filter)
+            
+            date_from = request.query_params.get('date_from')
+            if date_from:
+                try:
+                    date_from = datetime.strptime(date_from, '%Y-%m-%d').date()
+                    queryset = queryset.filter(scheduled_at__date__gte=date_from)
+                except ValueError:
+                    return Response({
+                        'success': False,
+                        'error': {
+                            'code': 'INVALID_DATE_FORMAT',
+                            'message': 'Invalid date format. Use YYYY-MM-DD'
+                        },
+                        'timestamp': timezone.now().isoformat()
+                    }, status=status.HTTP_400_BAD_REQUEST)
+            
+            date_to = request.query_params.get('date_to')
+            if date_to:
+                try:
+                    date_to = datetime.strptime(date_to, '%Y-%m-%d').date()
+                    queryset = queryset.filter(scheduled_at__date__lte=date_to)
+                except ValueError:
+                    return Response({
+                        'success': False,
+                        'error': {
+                            'code': 'INVALID_DATE_FORMAT',
+                            'message': 'Invalid date format. Use YYYY-MM-DD'
+                        },
+                        'timestamp': timezone.now().isoformat()
+                    }, status=status.HTTP_400_BAD_REQUEST)
+            
+            # Apply ordering
+            ordering = request.query_params.get('ordering', '-created_at')
+            queryset = queryset.order_by(ordering)
+            
+            # Apply pagination
+            paginator = PatientPagination()
+            page = paginator.paginate_queryset(queryset, request)
+            
+            if page is not None:
+                serializer = ConsultationListSerializer(page, many=True)
+                return paginator.get_paginated_response({
+                    'success': True,
+                    'data': serializer.data,
+                    'message': 'Patient consultations retrieved successfully',
+                    'timestamp': timezone.now().isoformat()
+                })
+            
+            serializer = ConsultationListSerializer(queryset, many=True)
+            return Response({
+                'success': True,
+                'data': serializer.data,
+                'message': 'Patient consultations retrieved successfully',
+                'timestamp': timezone.now().isoformat()
+            }, status=status.HTTP_200_OK)
+            
+        except Exception as e:
+            return Response({
+                'success': False,
+                'error': {
+                    'code': 'FETCH_ERROR',
                     'message': str(e)
                 },
                 'timestamp': timezone.now().isoformat()

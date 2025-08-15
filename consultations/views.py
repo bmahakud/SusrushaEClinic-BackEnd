@@ -28,7 +28,8 @@ from .serializers import (
     ConsultationAttachmentSerializer, ConsultationAttachmentCreateSerializer,
     ConsultationNoteSerializer, ConsultationNoteCreateSerializer,
     ConsultationRescheduleSerializer, ConsultationRescheduleCreateSerializer,
-    ConsultationReceiptSerializer, ConsultationReceiptCreateSerializer
+    ConsultationReceiptSerializer, ConsultationReceiptCreateSerializer,
+    ConsultationCheckInSerializer, ConsultationReadySerializer, ConsultationStartSerializer
 )
 from doctors.serializers import DoctorSlotSerializer
 from .services import WhatsAppNotificationService, ConsultationService, ConsultationAnalyticsService, ConsultationAutoCompletionService
@@ -2450,3 +2451,224 @@ def test_whatsapp_notification(request):
             {'error': str(e)}, 
             status=status.HTTP_500_INTERNAL_SERVER_ERROR
         )
+
+
+# ============================================================================
+# CHECK-IN MANAGEMENT VIEWS
+# ============================================================================
+
+class ConsultationCheckInView(APIView):
+    """Handle patient check-in for consultations"""
+    permission_classes = [IsAdminOrSuperAdmin]
+    
+    @extend_schema(
+        responses={200: ConsultationCheckInSerializer},
+        description="Check in a patient for consultation"
+    )
+    def post(self, request, consultation_id):
+        """Check in a patient for consultation"""
+        try:
+            consultation = Consultation.objects.get(id=consultation_id)
+            
+            # Check if consultation is in scheduled status
+            if consultation.status != 'scheduled':
+                return Response({
+                    'success': False,
+                    'error': f'Cannot check in patient. Consultation status is: {consultation.status}'
+                }, status=status.HTTP_400_BAD_REQUEST)
+            
+            # Check in the patient
+            if consultation.check_in_patient(request.user):
+                serializer = ConsultationCheckInSerializer(consultation)
+                return Response({
+                    'success': True,
+                    'data': serializer.data,
+                    'message': f'Patient {consultation.patient.name} checked in successfully',
+                    'timestamp': timezone.now().isoformat()
+                }, status=status.HTTP_200_OK)
+            else:
+                return Response({
+                    'success': False,
+                    'error': 'Failed to check in patient. Invalid consultation status.'
+                }, status=status.HTTP_400_BAD_REQUEST)
+                
+        except Consultation.DoesNotExist:
+            return Response({
+                'success': False,
+                'error': 'Consultation not found'
+            }, status=status.HTTP_404_NOT_FOUND)
+        except Exception as e:
+            return Response({
+                'success': False,
+                'error': str(e)
+            }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+
+
+class ConsultationReadyView(APIView):
+    """Handle marking patient as ready for consultation"""
+    permission_classes = [IsAdminOrSuperAdmin]
+    
+    @extend_schema(
+        responses={200: ConsultationReadySerializer},
+        description="Mark patient as ready for consultation"
+    )
+    def post(self, request, consultation_id):
+        """Mark patient as ready for consultation"""
+        try:
+            consultation = Consultation.objects.get(id=consultation_id)
+            
+            # Check if consultation can be marked as ready
+            if consultation.status not in ['scheduled', 'patient_checked_in']:
+                return Response({
+                    'success': False,
+                    'error': f'Cannot mark patient as ready. Consultation status is: {consultation.status}'
+                }, status=status.HTTP_400_BAD_REQUEST)
+            
+            # Mark patient as ready
+            if consultation.mark_ready_for_consultation(request.user):
+                serializer = ConsultationReadySerializer(consultation)
+                return Response({
+                    'success': True,
+                    'data': serializer.data,
+                    'message': f'Patient {consultation.patient.name} marked as ready for consultation',
+                    'timestamp': timezone.now().isoformat()
+                }, status=status.HTTP_200_OK)
+            else:
+                return Response({
+                    'success': False,
+                    'error': 'Failed to mark patient as ready. Invalid consultation status.'
+                }, status=status.HTTP_400_BAD_REQUEST)
+                
+        except Consultation.DoesNotExist:
+            return Response({
+                'success': False,
+                'error': 'Consultation not found'
+            }, status=status.HTTP_404_NOT_FOUND)
+        except Exception as e:
+            return Response({
+                'success': False,
+                'error': str(e)
+            }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+
+
+class ConsultationStartView(APIView):
+    """Handle starting a consultation"""
+    permission_classes = [permissions.IsAuthenticated]
+    
+    @extend_schema(
+        responses={200: ConsultationStartSerializer},
+        description="Start a consultation"
+    )
+    def post(self, request, consultation_id):
+        """Start a consultation"""
+        try:
+            consultation = Consultation.objects.get(id=consultation_id)
+            
+            # Check permissions - only doctors can start consultations
+            user = request.user
+            if user.role != 'doctor':
+                return Response({
+                    'success': False,
+                    'error': 'Only doctors can start consultations'
+                }, status=status.HTTP_403_FORBIDDEN)
+            
+            if consultation.doctor != user:
+                return Response({
+                    'success': False,
+                    'error': 'You can only start your own consultations'
+                }, status=status.HTTP_403_FORBIDDEN)
+            
+            # Check if consultation can be started
+            if consultation.status not in ['ready_for_consultation', 'patient_checked_in']:
+                return Response({
+                    'success': False,
+                    'error': f'Cannot start consultation. Status is: {consultation.status}'
+                }, status=status.HTTP_400_BAD_REQUEST)
+            
+            # Start the consultation
+            if consultation.start_consultation():
+                serializer = ConsultationStartSerializer(consultation)
+                return Response({
+                    'success': True,
+                    'data': serializer.data,
+                    'message': f'Consultation {consultation.id} started successfully',
+                    'timestamp': timezone.now().isoformat()
+                }, status=status.HTTP_200_OK)
+            else:
+                return Response({
+                    'success': False,
+                    'error': 'Failed to start consultation. Invalid status.'
+                }, status=status.HTTP_400_BAD_REQUEST)
+                
+        except Consultation.DoesNotExist:
+            return Response({
+                'success': False,
+                'error': 'Consultation not found'
+            }, status=status.HTTP_404_NOT_FOUND)
+        except Exception as e:
+            return Response({
+                'success': False,
+                'error': str(e)
+            }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+
+
+class ConsultationManagementView(APIView):
+    """Get consultations for admin management with check-in status"""
+    permission_classes = [IsAdminOrSuperAdmin]
+    
+    @extend_schema(
+        parameters=[
+            OpenApiParameter('status', OpenApiTypes.STR, description='Filter by consultation status'),
+            OpenApiParameter('date', OpenApiTypes.DATE, description='Filter by date (YYYY-MM-DD)'),
+            OpenApiParameter('page', OpenApiTypes.INT, description='Page number'),
+            OpenApiParameter('page_size', OpenApiTypes.INT, description='Number of items per page'),
+        ],
+        responses={200: ConsultationListSerializer(many=True)},
+        description="Get consultations for admin management"
+    )
+    def get(self, request):
+        """Get consultations for admin management"""
+        try:
+            # Get query parameters
+            status_filter = request.query_params.get('status', '')
+            date_filter = request.query_params.get('date', '')
+            page = int(request.query_params.get('page', 1))
+            page_size = int(request.query_params.get('page_size', 20))
+            
+            # Build queryset
+            queryset = Consultation.objects.select_related(
+                'patient', 'doctor', 'clinic'
+            ).order_by('-scheduled_date', '-scheduled_time')
+            
+            # Apply filters
+            if status_filter:
+                queryset = queryset.filter(status=status_filter)
+            
+            if date_filter:
+                try:
+                    filter_date = datetime.strptime(date_filter, '%Y-%m-%d').date()
+                    queryset = queryset.filter(scheduled_date=filter_date)
+                except ValueError:
+                    return Response({
+                        'success': False,
+                        'error': 'Invalid date format. Use YYYY-MM-DD'
+                    }, status=status.HTTP_400_BAD_REQUEST)
+            
+            # Pagination
+            paginator = ConsultationPagination()
+            paginated_queryset = paginator.paginate_queryset(queryset, request)
+            
+            serializer = ConsultationListSerializer(paginated_queryset, many=True)
+            
+            return Response({
+                'success': True,
+                'data': serializer.data,
+                'message': 'Consultations retrieved successfully for management',
+                'timestamp': timezone.now().isoformat()
+            }, status=status.HTTP_200_OK)
+            
+        except Exception as e:
+            return Response({
+                'success': False,
+                'error': str(e)
+            }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)

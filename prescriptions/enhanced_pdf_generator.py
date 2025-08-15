@@ -444,26 +444,172 @@ class WPDFGenerator:
 
     def _draw_doctor_signature(self):
         """Draw doctor signature for single page prescriptions"""
-        # Commented out doctor signature details
         # Position signature at bottom right
-        # signature_y = 150  # Above footer
+        signature_y = 150  # Above footer
         
-        # self.c.setFillColor(colors.black)
-        # self.c.setFont("Helvetica", 9)
-        # self.c.drawString(self.width - 200, signature_y, f"Prescribed on {self.prescription.issued_date.strftime('%d/%m/%Y')} by")
-        # self.c.setFont("Helvetica-Bold", 10)
-        # self.c.drawString(self.width - 200, signature_y - 15, f"Dr. {self.prescription.doctor.name}")
-        # self.c.setFont("Helvetica", 9)
+        self.c.setFillColor(colors.black)
+        self.c.setFont("Helvetica", 9)
+        self.c.drawString(self.width - 200, signature_y, f"Prescribed on {self.prescription.issued_date.strftime('%d/%m/%Y')}")
         
-        # doctor_qualifications = getattr(self.prescription.doctor, 'qualifications', 'MBBS')
-        # doctor_specialization = getattr(self.prescription.doctor, 'specialization', 'Family Physician')
-        # reg_number = getattr(self.prescription.doctor, 'registration_number', 'Reg.No. TSMC/FMR/15345')
+        # Get doctor profile information
+        try:
+            doctor_profile = self.prescription.doctor.doctor_profile
+            doctor_qualifications = getattr(doctor_profile, 'qualification', 'MBBS')
+            doctor_specialization = getattr(doctor_profile, 'specialization', 'Family Physician')
+            license_number = getattr(doctor_profile, 'license_number', 'Reg.No. TSMC/FMR/15345')
+            
+            self.c.drawString(self.width - 200, signature_y - 15, doctor_qualifications)
+            self.c.drawString(self.width - 200, signature_y - 30, f"{doctor_specialization} | {license_number}")
+            
+            # Draw doctor's signature image if available
+            if doctor_profile.signature:
+                try:
+                    from reportlab.lib.utils import ImageReader
+                    import requests
+                    from io import BytesIO
+                    
+                    # Try to get signature from cloud storage
+                    signature_url = doctor_profile.signature.url
+                    
+                    # Download signature from cloud storage
+                    response = requests.get(signature_url, timeout=10)
+                    if response.status_code == 200:
+                        # Create image from bytes
+                        signature_data = BytesIO(response.content)
+                        signature_img = ImageReader(signature_data)
+                        
+                        # Calculate signature dimensions (maintain aspect ratio)
+                        img_width, img_height = signature_img.getSize()
+                        max_width = 120
+                        max_height = 60
+                        
+                        # Scale to fit within bounds while maintaining aspect ratio
+                        scale = min(max_width / img_width, max_height / img_height)
+                        scaled_width = img_width * scale
+                        scaled_height = img_height * scale
+                        
+                        # Position signature above the signature text
+                        signature_x = self.width - 200
+                        signature_y_pos = signature_y - 60
+                        
+                        self.c.drawImage(signature_img, signature_x, signature_y_pos, width=scaled_width, height=scaled_height, preserveAspectRatio=True)
+                        
+                        # Add signature text below the image
+                        self.c.setFont("Helvetica", 9)
+                        self.c.drawString(signature_x, signature_y_pos - 20, "Doctor's Signature")
+                        
+                except Exception as e:
+                    print(f"Error drawing doctor signature: {e}")
+                    # Fallback to text signature
+                    self.c.setFont("Helvetica-Bold", 12)
+                    self.c.drawString(self.width - 200, signature_y - 60, "_________________")
+                    self.c.setFont("Helvetica", 9)
+                    self.c.drawString(self.width - 200, signature_y - 75, "Doctor's Signature")
+            else:
+                # No signature in profile - use text signature
+                self.c.setFont("Helvetica-Bold", 12)
+                self.c.drawString(self.width - 200, signature_y - 60, "_________________")
+                self.c.setFont("Helvetica", 9)
+                self.c.drawString(self.width - 200, signature_y - 75, "Doctor's Signature")
+            
+        except Exception as e:
+            print(f"Error accessing doctor profile: {e}")
+            # Fallback to basic signature
+            self.c.drawString(self.width - 200, signature_y - 30, "MBBS")
+            self.c.drawString(self.width - 200, signature_y - 45, "Family Physician | Reg.No. TSMC/FMR/15345")
+            
+            # Add signature line
+            self.c.setFont("Helvetica-Bold", 12)
+            self.c.drawString(self.width - 200, signature_y - 70, "_________________")
+            self.c.setFont("Helvetica", 9)
+            self.c.drawString(self.width - 200, signature_y - 85, "Doctor's Signature")
+
+    def _draw_doctor_signature_page2(self):
+        """Draw doctor signature for second page prescriptions"""
+        # Position signature at center-right of page 2
+        signature_y = self.height - 300
         
-        # self.c.drawString(self.width - 200, signature_y - 30, doctor_qualifications)
-        # self.c.drawString(self.width - 200, signature_y - 45, f"{doctor_specialization} | {reg_number}")
+        self.c.setFillColor(colors.black)
+        self.c.setFont("Helvetica", 9)
+        self.c.drawString(self.width - 200, signature_y, f"Prescribed on {self.prescription.issued_date.strftime('%d/%m/%Y')} by")
+        self.c.setFont("Helvetica-Bold", 10)
+        self.c.drawString(self.width - 200, signature_y - 15, f"Dr. {self.prescription.doctor.name}")
+        self.c.setFont("Helvetica", 9)
         
-        # No doctor signature details displayed
-        pass
+        # Get doctor profile information
+        try:
+            doctor_profile = self.prescription.doctor.doctor_profile
+            doctor_qualifications = getattr(doctor_profile, 'qualification', 'MBBS')
+            doctor_specialization = getattr(doctor_profile, 'specialization', 'Family Physician')
+            license_number = getattr(doctor_profile, 'license_number', 'Reg.No. TSMC/FMR/15345')
+            
+            self.c.drawString(self.width - 200, signature_y - 30, doctor_qualifications)
+            self.c.drawString(self.width - 200, signature_y - 45, f"{doctor_specialization} | {license_number}")
+            
+            # Draw doctor's signature image if available
+            if doctor_profile.signature:
+                try:
+                    from reportlab.lib.utils import ImageReader
+                    import requests
+                    from io import BytesIO
+                    
+                    # Try to get signature from cloud storage
+                    signature_url = doctor_profile.signature.url
+                    
+                    # Download signature from cloud storage
+                    response = requests.get(signature_url, timeout=10)
+                    if response.status_code == 200:
+                        # Create image from bytes
+                        signature_data = BytesIO(response.content)
+                        signature_img = ImageReader(signature_data)
+                        
+                        # Calculate signature dimensions (maintain aspect ratio)
+                        img_width, img_height = signature_img.getSize()
+                        max_width = 120
+                        max_height = 60
+                        
+                        # Scale to fit within bounds while maintaining aspect ratio
+                        scale = min(max_width / img_width, max_height / img_height)
+                        scaled_width = img_width * scale
+                        scaled_height = img_height * scale
+                        
+                        # Position signature above the signature text
+                        signature_x = self.width - 200
+                        signature_y_pos = signature_y - 60
+                        
+                        self.c.drawImage(signature_img, signature_x, signature_y_pos, width=scaled_width, height=scaled_height, preserveAspectRatio=True)
+                        
+                        # Add signature text below the image
+                        self.c.setFont("Helvetica", 9)
+                        self.c.drawString(signature_x, signature_y_pos - 20, "Doctor's Signature")
+                        
+                except Exception as e:
+                    print(f"Error drawing doctor signature: {e}")
+                    # Fallback to text signature
+                    self.c.setFont("Helvetica-Bold", 12)
+                    self.c.drawString(self.width - 200, signature_y - 60, "_________________")
+                    self.c.setFont("Helvetica", 9)
+                    self.c.drawString(self.width - 200, signature_y - 75, "Doctor's Signature")
+            else:
+                # No signature in profile - use text signature
+                self.c.setFont("Helvetica-Bold", 12)
+                self.c.drawString(self.width - 200, signature_y - 60, "_________________")
+                self.c.setFont("Helvetica", 9)
+                self.c.drawString(self.width - 200, signature_y - 75, "Doctor's Signature")
+            
+        except Exception as e:
+            print(f"Error accessing doctor profile: {e}")
+            # Fallback to basic signature
+            self.c.drawString(self.width - 200, signature_y - 30, "MBBS")
+            self.c.drawString(self.width - 200, signature_y - 45, "Family Physician | Reg.No. TSMC/FMR/15345")
+            
+            # Add signature line
+            self.c.setFont("Helvetica-Bold", 12)
+            self.c.drawString(self.width - 200, signature_y - 70, "_________________")
+            self.c.setFont("Helvetica", 9)
+            self.c.drawString(self.width - 200, signature_y - 85, "Doctor's Signature")
+
+
 
     def _draw_advice_instructions(self, start_y_pos=None):
         # FIXED: Check if we need a page break before drawing advice
@@ -539,9 +685,6 @@ class WPDFGenerator:
         p = Paragraph(disclaimer, style)
         text_height = p.wrapOn(self.c, disclaimer_width, self.height)[1]
         p.drawOn(self.c, 130, 30)
-        # Doctor's signature placeholder
-        self.c.setFont("Helvetica", 9)
-        self.c.drawString(self.width - 150, 80, "(Doctor's Signature)")
         # QR code for verification
         try:
             import qrcode
@@ -580,22 +723,8 @@ class WPDFGenerator:
             # Page 2 - Only doctor signature
             self._draw_header()
             
-            # Doctor's signature on page 2 - Commented out
-            # self.c.setFillColor(colors.black)
-            # self.c.setFont("Helvetica", 9)
-            # self.c.drawString(self.width - 200, self.height - 300, f"Prescribed on {self.prescription.issued_date.strftime('%d/%m/%Y')} by")
-            # self.c.setFont("Helvetica-Bold", 10)
-            # self.c.drawString(self.width - 200, self.height - 315, f"Dr. {self.prescription.doctor.name}")
-            # self.c.setFont("Helvetica", 9)
-            
-            # doctor_qualifications = getattr(self.prescription.doctor, 'qualifications', 'MBBS')
-            # doctor_specialization = getattr(self.prescription.doctor, 'specialization', 'Family Physician')
-            # reg_number = getattr(self.prescription.doctor, 'registration_number', 'Reg.No. TSMC/FMR/15345')
-            
-            # self.c.drawString(self.width - 200, self.height - 330, doctor_qualifications)
-            # self.c.drawString(self.width - 200, self.height - 345, f"{doctor_specialization} | {reg_number}")
-            
-            # No doctor signature details displayed on page 2
+            # Draw doctor signature on page 2
+            self._draw_doctor_signature_page2()
             
             self._draw_footer(2, 2)
         else:

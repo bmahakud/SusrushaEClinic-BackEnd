@@ -44,6 +44,11 @@ urlpatterns = [
          }), 
          name='patient-note-detail'),
     
+    # Patient consultations
+    path('<str:patient_id>/consultations/', 
+         views.PatientConsultationView.as_view(), 
+         name='patient-consultations'),
+    
     # Include router URLs for main patient profile operations
     path('', include(router.urls)),
 ]

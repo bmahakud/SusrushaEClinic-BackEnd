@@ -172,6 +172,35 @@ class SignatureUploadView(APIView):
             # Generate signed URL
             signed_url = get_signed_media_url(saved_path)
             
+            # Save signature information to DoctorSignature model if it's a doctor signature
+            if signature_type == 'doctor_signature':
+                try:
+                    from doctors.models import DoctorSignature
+                    # Get or create signature record for the doctor
+                    signature_record, created = DoctorSignature.objects.get_or_create(
+                        doctor=request.user,
+                        defaults={
+                            'signature_url': signed_url,
+                            'file_path': saved_path,
+                            'file_name': signature_file.name,
+                            'file_size': signature_file.size,
+                            'uploaded_by': request.user
+                        }
+                    )
+                    
+                    # Update if record already exists
+                    if not created:
+                        signature_record.signature_url = signed_url
+                        signature_record.file_path = saved_path
+                        signature_record.file_name = signature_file.name
+                        signature_record.file_size = signature_file.size
+                        signature_record.uploaded_by = request.user
+                        signature_record.is_active = True
+                        signature_record.save()
+                        
+                except Exception as e:
+                    print(f"Error saving signature record: {e}")
+            
             return Response({
                 'success': True,
                 'data': {

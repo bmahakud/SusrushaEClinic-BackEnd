@@ -22,9 +22,11 @@ class ConsultationSerializer(serializers.ModelSerializer):
             'consultation_type', 'scheduled_date', 'scheduled_time', 'duration',
             'status', 'doctor_notes', 'patient_notes', 'payment_status', 
             'consultation_fee', 'is_paid', 'created_at', 'updated_at',
-            'doctor_meeting_link', 'booked_slot',
+            'doctor_meeting_link', 'booked_slot', 'checked_in_at', 'checked_in_by',
+            'ready_for_consultation_at', 'ready_marked_by', 'is_checked_in',
+            'is_ready_for_consultation'
         ]
-        read_only_fields = ['id', 'created_at', 'updated_at']
+        read_only_fields = ['id', 'created_at', 'updated_at', 'is_checked_in', 'is_ready_for_consultation']
 
     def get_doctor_meeting_link(self, obj):
         if hasattr(obj, 'doctor') and hasattr(obj.doctor, 'doctor_profile') and hasattr(obj.doctor.doctor_profile, 'meeting_link'):
@@ -696,6 +698,33 @@ class ConsultationReceiptCreateSerializer(serializers.ModelSerializer):
         }
         
         return super().create(validated_data)
+
+
+class ConsultationCheckInSerializer(serializers.ModelSerializer):
+    """Serializer for checking in a patient"""
+    
+    class Meta:
+        model = Consultation
+        fields = ['id', 'status', 'checked_in_at', 'checked_in_by']
+        read_only_fields = ['id', 'checked_in_at', 'checked_in_by']
+
+
+class ConsultationReadySerializer(serializers.ModelSerializer):
+    """Serializer for marking patient as ready for consultation"""
+    
+    class Meta:
+        model = Consultation
+        fields = ['id', 'status', 'ready_for_consultation_at', 'ready_marked_by']
+        read_only_fields = ['id', 'ready_for_consultation_at', 'ready_marked_by']
+
+
+class ConsultationStartSerializer(serializers.ModelSerializer):
+    """Serializer for starting a consultation"""
+    
+    class Meta:
+        model = Consultation
+        fields = ['id', 'status', 'actual_start_time']
+        read_only_fields = ['id', 'actual_start_time']
 
 
 

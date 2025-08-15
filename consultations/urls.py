@@ -9,7 +9,7 @@ router = DefaultRouter()
 router.register(r'', views.ConsultationViewSet, basename='consultation')
 
 doctor_router = DefaultRouter()
-doctor_router.register(r'doctor/consultations', views.DoctorConsultationViewSet, basename='doctor-consultation')
+doctor_router.register(r'', views.DoctorConsultationViewSet, basename='doctor-consultation')
 
 urlpatterns = [
     # Patient-specific consultation endpoints
@@ -75,6 +75,25 @@ urlpatterns = [
          views.ConsultationReceiptView.as_view(), 
          name='consultation-receipt'),
     
+    # Check-in management endpoints
+    path('<str:consultation_id>/check-in/', 
+         views.ConsultationCheckInView.as_view(), 
+         name='consultation-check-in'),
+    path('<str:consultation_id>/ready/', 
+         views.ConsultationReadyView.as_view(), 
+         name='consultation-ready'),
+    path('<str:consultation_id>/start/', 
+         views.ConsultationStartView.as_view(), 
+         name='consultation-start'),
+    
+    # Admin consultation management
+    path('admin/management/', 
+         views.ConsultationManagementView.as_view(), 
+         name='admin-consultation-management'),
+    
+    # Doctor consultations
+    path('doctor/', include(doctor_router.urls)),
+    
     # Enhanced consultation endpoints for doctors (must come before router includes)
     path('statistics/', views.ConsultationStatsView.as_view(), name='consultation-statistics'),
     path('analytics/', views.ConsultationStatsView.as_view(), name='consultation-analytics'),
@@ -91,6 +110,5 @@ urlpatterns = [
     
     # Include router URLs for main consultation operations (must come last)
     path('', include(router.urls)),
-    path('', include(doctor_router.urls)),
 ]
 

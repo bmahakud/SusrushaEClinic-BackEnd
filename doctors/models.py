@@ -530,3 +530,50 @@ class DoctorStatus(models.Model):
                 self.current_status = 'away'
         self.save()
 
+
+class DoctorSignature(models.Model):
+    """Model to store doctor signature information"""
+    
+    doctor = models.OneToOneField(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.CASCADE,
+        related_name='signature_info'
+    )
+    
+    # Signature file information
+    signature_url = models.URLField(help_text="URL to the signature file in cloud storage")
+    file_path = models.CharField(max_length=500, help_text="Path to the signature file in storage")
+    file_name = models.CharField(max_length=200, help_text="Original filename of the signature")
+    file_size = models.PositiveIntegerField(help_text="Size of the signature file in bytes")
+    
+    # Upload information
+    uploaded_at = models.DateTimeField(auto_now_add=True)
+    uploaded_by = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name='uploaded_signatures'
+    )
+    
+    # Status
+    is_active = models.BooleanField(default=True, help_text="Whether this signature is currently active")
+    
+    class Meta:
+        db_table = 'doctor_signatures'
+        verbose_name = 'Doctor Signature'
+        verbose_name_plural = 'Doctor Signatures'
+    
+    def __str__(self):
+        return f"Signature for {self.doctor.name}"
+    
+    @property
+    def signed_url(self):
+        """Get signed URL for the signature file"""
+        try:
+            from utils.signed_urls import get_signed_media_url
+            return get_signed_media_url(self.file_path)
+        except Exception as e:
+            print(f"Error getting signed URL: {e}")
+            return self.signature_url
+

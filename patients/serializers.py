@@ -60,16 +60,27 @@ class MedicalRecordSerializer(serializers.ModelSerializer):
     """Serializer for medical records"""
     recorded_by_name = serializers.CharField(source='recorded_by.name', read_only=True)
     patient_name = serializers.CharField(source='patient.name', read_only=True)
+    document_url = serializers.SerializerMethodField()
     
     class Meta:
         model = MedicalRecord
         fields = [
             'id', 'patient', 'patient_name', 'record_type',
-            'title', 'description', 'date_recorded', 'document',
+            'title', 'description', 'date_recorded', 'document', 'document_url',
             'recorded_by', 'recorded_by_name', 'is_active',
             'created_at', 'updated_at'
         ]
         read_only_fields = ['id', 'patient', 'recorded_by', 'created_at', 'updated_at']
+    
+    def get_document_url(self, obj):
+        """Get signed URL for document if it exists"""
+        if obj.document:
+            try:
+                from utils.signed_urls import get_signed_media_url
+                return get_signed_media_url(obj.document.name)
+            except Exception:
+                return obj.document.url if hasattr(obj.document, 'url') else None
+        return None
 
 
 class MedicalRecordCreateSerializer(serializers.ModelSerializer):
@@ -80,6 +91,27 @@ class MedicalRecordCreateSerializer(serializers.ModelSerializer):
         fields = [
             'record_type', 'title', 'description', 'date_recorded', 'document'
         ]
+    
+    def validate_document(self, value):
+        """Validate uploaded document"""
+        if value:
+            # Check file size (max 10MB)
+            if value.size > 10 * 1024 * 1024:
+                raise serializers.ValidationError("File size must be less than 10MB")
+            
+            # Check file type
+            allowed_types = [
+                'image/jpeg', 'image/jpg', 'image/png', 'image/gif',
+                'application/pdf', 'application/msword', 
+                'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+                'text/plain'
+            ]
+            if value.content_type not in allowed_types:
+                raise serializers.ValidationError(
+                    "Only JPEG, PNG, GIF, PDF, DOC, DOCX, and TXT files are allowed"
+                )
+        
+        return value
     
     def create(self, validated_data):
         """Create medical record for patient"""
@@ -95,16 +127,27 @@ class PatientDocumentSerializer(serializers.ModelSerializer):
     """Serializer for patient documents"""
     verified_by_name = serializers.CharField(source='verified_by.name', read_only=True)
     patient_name = serializers.CharField(source='patient.name', read_only=True)
+    file_url = serializers.SerializerMethodField()
     
     class Meta:
         model = PatientDocument
         fields = [
             'id', 'patient', 'patient_name', 'document_type', 'title', 'description',
-            'file',
+            'file', 'file_url',
             'is_verified', 'verified_by', 'verified_by_name', 'verified_at',
             'uploaded_at', 'updated_at'
         ]
         read_only_fields = ['id', 'patient', 'verified_by', 'verified_at', 'uploaded_at', 'updated_at']
+    
+    def get_file_url(self, obj):
+        """Get signed URL for file if it exists"""
+        if obj.file:
+            try:
+                from utils.signed_urls import get_signed_media_url
+                return get_signed_media_url(obj.file.name)
+            except Exception:
+                return obj.file.url if hasattr(obj.file, 'url') else None
+        return None
 
 
 class PatientDocumentUploadSerializer(serializers.ModelSerializer):
@@ -115,6 +158,27 @@ class PatientDocumentUploadSerializer(serializers.ModelSerializer):
         fields = [
             'document_type', 'title', 'description', 'file'
         ]
+    
+    def validate_file(self, value):
+        """Validate uploaded file"""
+        if value:
+            # Check file size (max 10MB)
+            if value.size > 10 * 1024 * 1024:
+                raise serializers.ValidationError("File size must be less than 10MB")
+            
+            # Check file type
+            allowed_types = [
+                'image/jpeg', 'image/jpg', 'image/png', 'image/gif',
+                'application/pdf', 'application/msword', 
+                'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+                'text/plain'
+            ]
+            if value.content_type not in allowed_types:
+                raise serializers.ValidationError(
+                    "Only JPEG, PNG, GIF, PDF, DOC, DOCX, and TXT files are allowed"
+                )
+        
+        return value
     
     def create(self, validated_data):
         """Create patient document"""

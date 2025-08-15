@@ -9,7 +9,7 @@ from django.db.models import Q, Count, Sum, Avg
 from drf_spectacular.utils import extend_schema, OpenApiParameter
 from drf_spectacular.types import OpenApiTypes
 from datetime import datetime, timedelta
-from rest_framework.decorators import action
+from rest_framework.decorators import action, api_view, permission_classes
 from rest_framework.exceptions import PermissionDenied
 
 from .models import Clinic
@@ -25,6 +25,7 @@ from .serializers import (
 from .models import (
     GlobalMedication
 )
+from .services.fda_api import search_fda_medications, get_fda_medication_details
 
 
 class ClinicPagination(PageNumberPagination):
@@ -107,15 +108,25 @@ class GlobalMedicationViewSet(ModelViewSet):
     
     def get_permissions(self):
         """Only super admin can manage global medications"""
-        if self.request.user.role != 'superadmin':
+        # Handle anonymous users
+        if not self.request.user.is_authenticated:
             return [permissions.IsAuthenticated()]
-        return super().get_permissions()
+        
+        # Check if user has role attribute and is superadmin
+        if hasattr(self.request.user, 'role') and self.request.user.role == 'superadmin':
+            return super().get_permissions()
+        else:
+            return [permissions.IsAuthenticated()]
     
     @action(detail=False, methods=['get'], url_path='search')
     def search_medications(self, request):
-        """Search global medications"""
+        # Override permissions for this action
+        self.permission_classes = [permissions.AllowAny]
+        """Enhanced medication search with multiple sources"""
         query = request.query_params.get('q', '').strip()
         limit = int(request.query_params.get('limit', 20))
+        include_fda = request.query_params.get('include_fda', 'false').lower() == 'true'
+        source = request.query_params.get('source', 'all')  # 'local', 'fda', 'all'
         
         if not query:
             return Response({
@@ -128,25 +139,66 @@ class GlobalMedicationViewSet(ModelViewSet):
             }, status=status.HTTP_400_BAD_REQUEST)
         
         try:
-            # Search in global medications
-            medications = GlobalMedication.objects.filter(
-                is_active=True
-            ).filter(
-                Q(name__icontains=query) |
-                Q(generic_name__icontains=query) |
-                Q(brand_name__icontains=query) |
-                Q(composition__icontains=query) |
-                Q(therapeutic_class__icontains=query)
-            )[:limit]
+            results = []
             
-            serializer = GlobalMedicationSearchSerializer(medications, many=True)
+            # 1. Search local database
+            if source in ['local', 'all']:
+                local_medications = GlobalMedication.objects.filter(
+                    is_active=True
+                ).filter(
+                    Q(name__icontains=query) |
+                    Q(generic_name__icontains=query) |
+                    Q(brand_name__icontains=query) |
+                    Q(composition__icontains=query) |
+                    Q(therapeutic_class__icontains=query)
+                )[:limit]
+                
+                for med in local_medications:
+                    results.append({
+                        'id': f"local_{med.id}",
+                        'name': med.name,
+                        'generic_name': med.generic_name,
+                        'brand_name': med.brand_name,
+                        'strength': med.strength,
+                        'dosage_form': med.get_dosage_form_display(),
+                        'source': 'local_database',
+                        'therapeutic_class': med.therapeutic_class,
+                        'is_verified': med.is_verified,
+                        'medication_type': med.get_medication_type_display(),
+                        'composition': med.composition,
+                        'indication': med.indication,
+                        'manufacturer': med.manufacturer
+                    })
+            
+            # 2. Search FDA API if requested
+            if source in ['fda', 'all'] and include_fda and len(results) < limit:
+                fda_limit = limit - len(results)
+                fda_results = search_fda_medications(query, fda_limit)
+                
+                for fda_med in fda_results:
+                    results.append({
+                        'id': fda_med['id'],
+                        'name': fda_med['name'],
+                        'generic_name': fda_med['generic_name'],
+                        'brand_name': fda_med['brand_name'],
+                        'strength': fda_med['strength'],
+                        'dosage_form': fda_med['dosage_form'],
+                        'source': 'fda_api',
+                        'therapeutic_class': fda_med['therapeutic_class'],
+                        'is_verified': fda_med['is_verified'],
+                        'medication_type': fda_med['medication_type'],
+                        'composition': fda_med['composition'],
+                        'indication': fda_med['indication'],
+                        'manufacturer': fda_med['manufacturer']
+                    })
             
             return Response({
                 'success': True,
                 'data': {
-                    'medications': serializer.data,
-                    'total_found': medications.count(),
-                    'query': query
+                    'medications': results,
+                    'total_found': len(results),
+                    'query': query,
+                    'sources_searched': ['local_database'] + (['fda_api'] if include_fda else [])
                 },
                 'message': 'Medications found successfully',
                 'timestamp': timezone.now().isoformat()
@@ -215,6 +267,98 @@ class GlobalMedicationViewSet(ModelViewSet):
                 'error': {
                     'code': 'BULK_CREATE_ERROR',
                     'message': f'Error in bulk creation: {str(e)}'
+                },
+                'timestamp': timezone.now().isoformat()
+            }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+    
+    @action(detail=False, methods=['post'], url_path='import-from-fda')
+    def import_from_fda(self, request):
+        """Import medications from FDA API into local database"""
+        try:
+            drug_name = request.data.get('drug_name', '').strip()
+            
+            if not drug_name:
+                return Response({
+                    'success': False,
+                    'error': {
+                        'code': 'MISSING_DRUG_NAME',
+                        'message': 'Drug name is required'
+                    },
+                    'timestamp': timezone.now().isoformat()
+                }, status=status.HTTP_400_BAD_REQUEST)
+            
+            # Get FDA medication details
+            fda_medication = get_fda_medication_details(drug_name)
+            
+            if not fda_medication:
+                return Response({
+                    'success': False,
+                    'error': {
+                        'code': 'FDA_MEDICATION_NOT_FOUND',
+                        'message': f'Medication "{drug_name}" not found in FDA database'
+                    },
+                    'timestamp': timezone.now().isoformat()
+                }, status=status.HTTP_404_NOT_FOUND)
+            
+            # Check if medication already exists
+            existing_medication = GlobalMedication.objects.filter(
+                name__iexact=fda_medication['name']
+            ).first()
+            
+            if existing_medication:
+                return Response({
+                    'success': False,
+                    'error': {
+                        'code': 'MEDICATION_EXISTS',
+                        'message': f'Medication "{fda_medication["name"]}" already exists in local database'
+                    },
+                    'timestamp': timezone.now().isoformat()
+                }, status=status.HTTP_409_CONFLICT)
+            
+            # Create new medication
+            medication_data = {
+                'name': fda_medication['name'],
+                'generic_name': fda_medication['generic_name'],
+                'brand_name': fda_medication['brand_name'],
+                'composition': fda_medication['composition'],
+                'dosage_form': fda_medication['dosage_form'],
+                'strength': fda_medication['strength'],
+                'medication_type': fda_medication['medication_type'],
+                'therapeutic_class': fda_medication['therapeutic_class'],
+                'indication': fda_medication['indication'],
+                'contraindications': fda_medication['contraindications'],
+                'side_effects': fda_medication['side_effects'],
+                'dosage_instructions': fda_medication['dosage_instructions'],
+                'frequency_options': fda_medication['frequency_options'],
+                'timing_options': fda_medication['timing_options'],
+                'manufacturer': fda_medication['manufacturer'],
+                'license_number': fda_medication['license_number'],
+                'is_prescription_required': fda_medication['is_prescription_required'],
+                'is_active': True,
+                'is_verified': True,
+                'created_by': request.user
+            }
+            
+            new_medication = GlobalMedication.objects.create(**medication_data)
+            
+            serializer = GlobalMedicationSerializer(new_medication)
+            
+            return Response({
+                'success': True,
+                'data': {
+                    'medication': serializer.data,
+                    'source': 'fda_api'
+                },
+                'message': f'Successfully imported "{fda_medication["name"]}" from FDA database',
+                'timestamp': timezone.now().isoformat()
+            }, status=status.HTTP_201_CREATED)
+            
+        except Exception as e:
+            return Response({
+                'success': False,
+                'error': {
+                    'code': 'IMPORT_ERROR',
+                    'message': f'Error importing from FDA: {str(e)}'
                 },
                 'timestamp': timezone.now().isoformat()
             }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
@@ -1200,6 +1344,113 @@ class NearbyClinicView(APIView):
             'message': 'Nearby clinics retrieved successfully',
             'timestamp': timezone.now().isoformat()
         }, status=status.HTTP_200_OK)
+
+
+@api_view(['GET'])
+@permission_classes([permissions.AllowAny])
+def public_medication_search(request):
+    """Public medication search endpoint - no authentication required"""
+    query = request.query_params.get('q', '').strip()
+    
+    # Validate and parse limit parameter
+    try:
+        limit = int(request.query_params.get('limit', 20))
+        if limit <= 0:
+            limit = 20
+    except (ValueError, TypeError):
+        limit = 20
+    
+    # Validate and parse include_fda parameter
+    include_fda_param = request.query_params.get('include_fda', 'false').lower()
+    include_fda = include_fda_param in ['true', '1', 'yes', 'on']
+    
+    source = request.query_params.get('source', 'all')  # 'local', 'fda', 'all'
+    
+    if not query:
+        return Response({
+            'success': False,
+            'error': {
+                'code': 'MISSING_QUERY',
+                'message': 'Search query is required'
+            },
+            'timestamp': timezone.now().isoformat()
+        }, status=status.HTTP_400_BAD_REQUEST)
+    
+    try:
+        results = []
+        
+        # 1. Search local database
+        if source in ['local', 'all']:
+            local_medications = GlobalMedication.objects.filter(
+                is_active=True
+            ).filter(
+                Q(name__icontains=query) |
+                Q(generic_name__icontains=query) |
+                Q(brand_name__icontains=query) |
+                Q(composition__icontains=query) |
+                Q(therapeutic_class__icontains=query)
+            )[:limit]
+            
+            for med in local_medications:
+                results.append({
+                    'id': f"local_{med.id}",
+                    'name': med.name,
+                    'generic_name': med.generic_name,
+                    'brand_name': med.brand_name,
+                    'strength': med.strength,
+                    'dosage_form': med.get_dosage_form_display(),
+                    'source': 'local_database',
+                    'therapeutic_class': med.therapeutic_class,
+                    'is_verified': med.is_verified,
+                    'medication_type': med.get_medication_type_display(),
+                    'composition': med.composition,
+                    'indication': med.indication,
+                    'manufacturer': med.manufacturer
+                })
+        
+        # 2. Search FDA API if requested
+        if source in ['fda', 'all'] and include_fda and len(results) < limit:
+            fda_limit = limit - len(results)
+            fda_results = search_fda_medications(query, fda_limit)
+            
+            for fda_med in fda_results:
+                results.append({
+                    'id': fda_med['id'],
+                    'name': fda_med['name'],
+                    'generic_name': fda_med['generic_name'],
+                    'brand_name': fda_med['brand_name'],
+                    'strength': fda_med['strength'],
+                    'dosage_form': fda_med['dosage_form'],
+                    'source': 'fda_api',
+                    'therapeutic_class': fda_med['therapeutic_class'],
+                    'is_verified': fda_med['is_verified'],
+                    'medication_type': fda_med['medication_type'],
+                    'composition': fda_med['composition'],
+                    'indication': fda_med['indication'],
+                    'manufacturer': fda_med['manufacturer']
+                })
+        
+        return Response({
+            'success': True,
+            'data': {
+                'medications': results,
+                'total_found': len(results),
+                'query': query,
+                'sources_searched': ['local_database'] + (['fda_api'] if include_fda else [])
+            },
+            'message': 'Medications found successfully',
+            'timestamp': timezone.now().isoformat()
+        })
+        
+    except Exception as e:
+        return Response({
+            'success': False,
+            'error': {
+                'code': 'SEARCH_ERROR',
+                'message': f'Error searching medications: {str(e)}'
+            },
+            'timestamp': timezone.now().isoformat()
+        }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
 
 
 
