@@ -4,7 +4,7 @@ from doctors.models import DoctorProfile
 
 
 class Command(BaseCommand):
-    help = 'Create missing doctor profiles for users with doctor role'
+    help = 'Create missing doctor profiles for existing doctor users'
 
     def add_arguments(self, parser):
         parser.add_argument('--phone', type=str, help='Specific phone number to create profile for')
@@ -40,7 +40,7 @@ class Command(BaseCommand):
                     bio=f'Experienced doctor - {user.name}',
                     achievements='',
                     is_verified=True,
-                    consultation_duration=30,
+                    consultation_duration=5,
                     is_online_consultation_available=True,
                     is_active=True,
                     rating=0.0,
@@ -83,7 +83,7 @@ class Command(BaseCommand):
                     bio=f'Experienced doctor - {user.name}',
                     achievements='',
                     is_verified=True,
-                    consultation_duration=30,
+                    consultation_duration=5,
                     is_online_consultation_available=True,
                     is_active=True,
                     rating=0.0,

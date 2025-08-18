@@ -917,7 +917,7 @@ class SuperAdminDoctorManagementView(APIView):
                 'clinic_address': request.data.get('clinic_address', ''),
                 'bio': request.data.get('bio', ''),
                 'languages_spoken': parse_json_field(request.data.get('languages_spoken', [])),
-                'consultation_duration': request.data.get('consultation_duration', 30),
+                'consultation_duration': request.data.get('consultation_duration', 5),
                 'is_online_consultation_available': parse_boolean(request.data.get('is_online_consultation_available', True)),
                 'is_verified': True,  # SuperAdmin-created profiles are pre-verified
                 'is_active': parse_boolean(request.data.get('is_active', True)),

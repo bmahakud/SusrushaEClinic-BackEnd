@@ -64,7 +64,7 @@ class Command(BaseCommand):
                     'sub_specialization': '',
                     'experience_years': random.randint(3, 20),
                     'consultation_fee': random.randint(300, 800),
-                    'consultation_duration': 30,
+                    'consultation_duration': 5,
                     'clinic_name': f'{city} Clinic',
                     'clinic_address': f'{city}, Odisha',
                     'is_online_consultation_available': True,

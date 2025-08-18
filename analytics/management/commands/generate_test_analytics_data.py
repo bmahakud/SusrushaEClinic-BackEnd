@@ -97,7 +97,7 @@ class Command(BaseCommand):
                 is_active=True,
                 is_verified=True,
                 accepts_online_consultations=True,
-                consultation_duration=30,
+                consultation_duration=5,
                 admin=admins[i]
             )
             clinics.append(clinic)
@@ -129,7 +129,7 @@ class Command(BaseCommand):
                 specialization=random.choice(specializations),
                 experience_years=random.randint(5, 20),
                 consultation_fee=random.randint(500, 2000),
-                consultation_duration=30,
+                consultation_duration=5,
                 is_verified=True,
                 is_active=True,
                 is_accepting_patients=True,

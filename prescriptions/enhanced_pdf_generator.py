@@ -322,38 +322,39 @@ class WPDFGenerator:
         self.c.setStrokeColor(self.line_color)
         self.c.line(30, y_pos - 10, self.width - 30, y_pos - 10)
 
-    def _draw_chief_complaints(self):
+    def _draw_patient_history(self):
+        """Draw patient medical history section"""
         y_pos = self.height - 310 # Equal spacing from vital signs
         self.c.setFillColor(self.heading_color)
-        self.c.setFont("Helvetica-Bold", 10)
-        self.c.drawString(30, y_pos, "CHIEF COMPLAINTS")
+        self.c.setFont("Helvetica-Bold", 12)
+        self.c.drawString(30, y_pos, "PATIENT MEDICAL HISTORY")
         self.c.setStrokeColor(self.line_color)
         self.c.line(30, y_pos - 5, self.width - 30, y_pos - 5)
-
         y_pos -= 20
-        self.c.setFillColor(colors.black)
-        self.c.setFont("Helvetica", 9)
         
-        # Dynamic chief complaints from consultation
-        chief_complaints = "No chief complaints recorded"
-        if hasattr(self.prescription, 'consultation') and self.prescription.consultation:
-            chief_complaints = self.prescription.consultation.chief_complaint or "No chief complaints recorded"
-        self.c.drawString(30, y_pos, chief_complaints)
-
+        self.c.setFillColor(colors.black)
+        self.c.setFont("Helvetica", 10)
+        if self.prescription.patient_previous_history:
+            self.c.drawString(30, y_pos, f"Previous Medical History: {self.prescription.patient_previous_history}")
+        else:
+            self.c.drawString(30, y_pos, "No previous medical history recorded")
+        y_pos -= 15
+        
         self.c.setStrokeColor(self.line_color)
         self.c.line(30, y_pos - 10, self.width - 30, y_pos - 10)
+        return y_pos
 
     def _draw_diagnosis(self):
-        y_pos = self.height - 400 # Equal spacing from chief complaints
+        y_pos = self.height - 380 # Equal spacing from patient history
         self.c.setFillColor(self.heading_color)
-        self.c.setFont("Helvetica-Bold", 10)
-        self.c.drawString(30, y_pos, "DIAGNOSIS/ PROVISIONAL DIAGNOSIS")
+        self.c.setFont("Helvetica-Bold", 12)
+        self.c.drawString(30, y_pos, "DIAGNOSIS / PROVISIONAL DIAGNOSIS")
         self.c.setStrokeColor(self.line_color)
         self.c.line(30, y_pos - 5, self.width - 30, y_pos - 5)
 
         y_pos -= 20
         self.c.setFillColor(colors.black)
-        self.c.setFont("Helvetica", 9)
+        self.c.setFont("Helvetica", 10)
         
         # Enhanced diagnosis display with separate sections
         diagnosis_sections = []
@@ -361,10 +362,6 @@ class WPDFGenerator:
         # Primary Diagnosis
         if self.prescription.primary_diagnosis:
             diagnosis_sections.append(f"Primary Diagnosis: {self.prescription.primary_diagnosis}")
-        
-        # Secondary Diagnosis
-        if self.prescription.patient_previous_history:
-            diagnosis_sections.append(f"Patient Previous History: {self.prescription.patient_previous_history}")
         
         # Clinical Classification
         if self.prescription.clinical_classification:
@@ -703,7 +700,7 @@ class WPDFGenerator:
         self._draw_header()
         self._draw_appointment_details()
         self._draw_vital_signs()
-        self._draw_chief_complaints()
+        self._draw_patient_history()
         self._draw_diagnosis()
         self._draw_medication()
         

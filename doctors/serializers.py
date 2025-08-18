@@ -73,6 +73,13 @@ class DoctorProfileCreateSerializer(serializers.ModelSerializer):
         user = self.context['request'].user
         validated_data['user'] = user
         return super().create(validated_data)
+    
+    def validate_consultation_duration(self, value):
+        """Validate consultation duration is between 5 and 15 minutes"""
+        if value is not None:
+            if value < 5 or value > 15:
+                raise serializers.ValidationError("Consultation duration must be between 5 and 15 minutes.")
+        return value
 
 
 class DoctorProfileUpdateSerializer(serializers.ModelSerializer):
@@ -128,6 +135,13 @@ class DoctorProfileUpdateSerializer(serializers.ModelSerializer):
         """Validate specialization choice"""
         if not value or value.strip() == '':
             return value  # Allow empty/blank values for updates
+        return value
+    
+    def validate_consultation_duration(self, value):
+        """Validate consultation duration is between 5 and 15 minutes"""
+        if value is not None:
+            if value < 5 or value > 15:
+                raise serializers.ValidationError("Consultation duration must be between 5 and 15 minutes.")
         return value
     
     def get_signature_url(self, obj):

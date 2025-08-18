@@ -291,7 +291,6 @@ class ProfessionalPrescriptionPDFGenerator:
                 ['Consultation Date:', self.prescription.consultation.scheduled_date.strftime('%d/%m/%Y')],
                 ['Consultation Time:', self.prescription.consultation.scheduled_time.strftime('%H:%M')],
                 ['Consultation Type:', getattr(self.prescription.consultation, 'consultation_type', 'General')],
-                ['Chief Complaint:', getattr(self.prescription.consultation, 'chief_complaint', 'N/A')],
             ]
             content.extend(self._create_info_section("CONSULTATION DETAILS", consultation_data, styles))
         
@@ -324,24 +323,27 @@ class ProfessionalPrescriptionPDFGenerator:
             if vital_data:
                 content.extend(self._create_info_section("VITAL SIGNS", vital_data, styles))
         
+        # Patient History - Separate Section for Better Visibility
+        if self.prescription.patient_previous_history:
+            content.append(Paragraph("PATIENT MEDICAL HISTORY", section_style))
+            content.append(Paragraph(f"<b>Previous Medical History:</b> {self.prescription.patient_previous_history}", normal_style))
+            content.append(Spacer(1, 20))
+        
         # Diagnosis
-        if self.prescription.primary_diagnosis or self.prescription.patient_previous_history:
-            content.append(Paragraph("DIAGNOSIS", section_style))
+        if self.prescription.primary_diagnosis or self.prescription.clinical_classification:
+            content.append(Paragraph("DIAGNOSIS / PROVISIONAL DIAGNOSIS", section_style))
             
             diagnosis_text = ""
             if self.prescription.primary_diagnosis:
                 diagnosis_text += f"<b>Primary:</b> {self.prescription.primary_diagnosis}"
-            if self.prescription.patient_previous_history:
-                if diagnosis_text:
-                    diagnosis_text += "<br/>"
-                diagnosis_text += f"<b>Patient History:</b> {self.prescription.patient_previous_history}"
             if self.prescription.clinical_classification:
                 if diagnosis_text:
                     diagnosis_text += "<br/>"
                 diagnosis_text += f"<b>Clinical Classification:</b> {self.prescription.clinical_classification}"
             
-            content.append(Paragraph(diagnosis_text, normal_style))
-            content.append(Spacer(1, 15))
+            if diagnosis_text:
+                content.append(Paragraph(diagnosis_text, normal_style))
+                content.append(Spacer(1, 20))
         
         # Medications
         if self.prescription.medications.exists():
