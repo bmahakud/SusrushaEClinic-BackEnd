@@ -115,7 +115,7 @@ class DoctorProfile(models.Model):
     @property
     def meeting_link(self):
         # Use the user's unique id (e.g., DOC001) for the meeting link
-        return f"http://meet.diracai.com/{self.user.id}"
+        return f"https://meet.diracai.com/{self.user.id}"
 
 
 class DoctorSchedule(models.Model):

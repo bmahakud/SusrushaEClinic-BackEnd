@@ -85,6 +85,9 @@ urlpatterns = [
     path('<str:consultation_id>/start/', 
          views.ConsultationStartView.as_view(), 
          name='consultation-start'),
+    path('<str:consultation_id>/complete/', 
+         views.ConsultationCompleteView.as_view(), 
+         name='consultation-complete'),
     
     # Admin consultation management
     path('admin/management/', 

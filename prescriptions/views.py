@@ -37,8 +37,8 @@ class IsDoctorOrPatientOrAdmin(permissions.BasePermission):
         # Allow public access to verification endpoint
         if view.action == 'verify_prescription':
             return True
-        # Admin can do anything
-        if request.user.role == 'superadmin':
+        # Admin and SuperAdmin can do anything
+        if request.user.role in ['admin', 'superadmin']:
             return True
         # Doctor can edit/view, patient can view
         if request.user == obj.doctor:
@@ -753,6 +753,12 @@ class PrescriptionViewSet(viewsets.ModelViewSet):
             
             # Check permissions
             user = request.user
+            print(f"DEBUG: User ID: {user.id}, Role: {user.role}, Username: {user.username}")
+            print(f"DEBUG: Prescription doctor: {prescription.doctor.id}, patient: {prescription.patient.id}")
+            print(f"DEBUG: User == doctor: {user == prescription.doctor}")
+            print(f"DEBUG: User == patient: {user == prescription.patient}")
+            print(f"DEBUG: User role in admin/superadmin: {user.role in ['admin', 'superadmin']}")
+            
             if not (user == prescription.doctor or 
                    user == prescription.patient or 
                    user.role in ['admin', 'superadmin']):
@@ -760,7 +766,7 @@ class PrescriptionViewSet(viewsets.ModelViewSet):
                     'success': False,
                     'error': {
                         'code': 'PERMISSION_DENIED',
-                        'message': 'You do not have permission to access this PDF'
+                        'message': f'You do not have permission to access this PDF. User role: {user.role}'
                     },
                     'timestamp': timezone.now().isoformat()
                 }, status=status.HTTP_403_FORBIDDEN)

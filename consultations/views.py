@@ -2703,6 +2703,70 @@ class ConsultationStartView(APIView):
             }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
 
 
+class ConsultationCompleteView(APIView):
+    """Handle completing a consultation"""
+    permission_classes = [permissions.IsAuthenticated]
+    
+    @extend_schema(
+        responses={200: ConsultationStartSerializer},
+        description="Complete a consultation"
+    )
+    def post(self, request, consultation_id):
+        """Complete a consultation"""
+        try:
+            consultation = Consultation.objects.get(id=consultation_id)
+            
+            # Check permissions - only doctors can complete consultations
+            user = request.user
+            if user.role != 'doctor':
+                return Response({
+                    'success': False,
+                    'error': 'Only doctors can complete consultations'
+                }, status=status.HTTP_403_FORBIDDEN)
+            
+            if consultation.doctor != user:
+                return Response({
+                    'success': False,
+                    'error': 'You can only complete your own consultations'
+                }, status=status.HTTP_403_FORBIDDEN)
+            
+            # Check if consultation can be completed
+            if consultation.status != 'in_progress':
+                return Response({
+                    'success': False,
+                    'error': f'Cannot complete consultation. Current status is: {consultation.status}. Only in-progress consultations can be completed.'
+                }, status=status.HTTP_400_BAD_REQUEST)
+            
+            # Complete the consultation
+            try:
+                from .services import ConsultationService
+                ConsultationService.complete_consultation(consultation)
+                
+                serializer = ConsultationStartSerializer(consultation)
+                return Response({
+                    'success': True,
+                    'data': serializer.data,
+                    'message': f'Consultation {consultation.id} completed successfully',
+                    'timestamp': timezone.now().isoformat()
+                }, status=status.HTTP_200_OK)
+            except ValidationError as e:
+                return Response({
+                    'success': False,
+                    'error': str(e)
+                }, status=status.HTTP_400_BAD_REQUEST)
+                
+        except Consultation.DoesNotExist:
+            return Response({
+                'success': False,
+                'error': 'Consultation not found'
+            }, status=status.HTTP_404_NOT_FOUND)
+        except Exception as e:
+            return Response({
+                'success': False,
+                'error': str(e)
+            }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+
+
 class ConsultationManagementView(APIView):
     """Get consultations for admin management with check-in status"""
     permission_classes = [IsAdminOrSuperAdmin]
