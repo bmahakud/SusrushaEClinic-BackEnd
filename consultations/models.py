@@ -4,6 +4,9 @@ from django.utils import timezone
 from django.core.validators import MinValueValidator, MaxValueValidator
 import uuid
 from eclinic.models import Clinic
+from datetime import timedelta
+import datetime
+from django.core.exceptions import ValidationError
 
 
 class Consultation(models.Model):
@@ -18,6 +21,7 @@ class Consultation(models.Model):
         ('cancelled', 'Cancelled'),
         ('no_show', 'No Show'),
         ('rescheduled', 'Rescheduled'),
+        ('overdue', 'Overdue'),  # New status for overdue consultations
     ]
     
     CONSULTATION_TYPES = [
@@ -128,6 +132,30 @@ class Consultation(models.Model):
         related_name='booked_consultations'
     )
     
+    # Reschedule Information
+    reschedule_requested = models.BooleanField(default=False, help_text="Whether reschedule has been requested")
+    reschedule_requested_at = models.DateTimeField(null=True, blank=True, help_text="When reschedule was requested")
+    reschedule_requested_by = models.ForeignKey(
+        settings.AUTH_USER_MODEL, 
+        on_delete=models.SET_NULL, 
+        null=True, 
+        blank=True,
+        related_name='reschedule_requests_made',
+        help_text="Who requested the reschedule"
+    )
+    reschedule_reason = models.TextField(blank=True, help_text="Reason for reschedule request")
+    reschedule_approved = models.BooleanField(default=False, help_text="Whether reschedule has been approved")
+    reschedule_approved_by = models.ForeignKey(
+        settings.AUTH_USER_MODEL, 
+        on_delete=models.SET_NULL, 
+        null=True, 
+        blank=True,
+        related_name='reschedule_approvals_given',
+        help_text="Who approved the reschedule"
+    )
+    reschedule_approved_at = models.DateTimeField(null=True, blank=True, help_text="When reschedule was approved")
+    rescheduled_at = models.DateTimeField(null=True, blank=True, help_text="When reschedule was applied")
+    
     # Metadata
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
@@ -172,7 +200,11 @@ class Consultation(models.Model):
     @property
     def scheduled_datetime(self):
         """Get scheduled datetime"""
-        return timezone.datetime.combine(self.scheduled_date, self.scheduled_time)
+        dt = datetime.datetime.combine(self.scheduled_date, self.scheduled_time)
+        # Ensure the datetime is timezone-aware to compare with timezone.now()
+        if timezone.is_naive(dt):
+            dt = timezone.make_aware(dt, timezone.get_current_timezone())
+        return dt
     
     @property
     def actual_duration(self):
@@ -190,7 +222,88 @@ class Consultation(models.Model):
     @property
     def is_overdue(self):
         """Check if consultation is overdue"""
-        return self.scheduled_datetime < timezone.now() and self.status == 'scheduled'
+        if self.status in ['completed', 'cancelled', 'rescheduled']:
+            return False
+        return self.scheduled_datetime < timezone.now()
+    
+    @property
+    def is_eligible_for_reschedule(self):
+        """Check if consultation is eligible for reschedule"""
+        # Can reschedule if not completed/cancelled and either overdue or within grace period
+        if self.status in ['completed', 'cancelled']:
+            return False
+        
+        # Allow reschedule if overdue or within 1 hour of scheduled time
+        grace_period = timezone.now() - timedelta(hours=1)
+        return self.scheduled_datetime < grace_period
+    
+    @property
+    def hours_overdue(self):
+        """Calculate how many hours the consultation is overdue"""
+        if not self.is_overdue:
+            return 0
+        duration = timezone.now() - self.scheduled_datetime
+        return duration.total_seconds() / 3600
+    
+    def request_reschedule(self, requested_by, reason=""):
+        """Request a reschedule for the consultation"""
+        if not self.is_eligible_for_reschedule:
+            raise ValidationError("This consultation is not eligible for reschedule")
+        
+        self.reschedule_requested = True
+        self.reschedule_requested_at = timezone.now()
+        self.reschedule_requested_by = requested_by
+        self.reschedule_reason = reason
+        self.status = 'overdue'  # Mark as overdue when reschedule is requested
+        self.save()
+        
+        return True
+    
+    def approve_reschedule(self, approved_by):
+        """Approve a reschedule request"""
+        if not self.reschedule_requested:
+            raise ValidationError("No reschedule request to approve")
+        
+        self.reschedule_approved = True
+        self.reschedule_approved_by = approved_by
+        self.reschedule_approved_at = timezone.now()
+        self.save()
+        
+        return True
+    
+    def apply_reschedule(self, new_date, new_time, reason=""):
+        """Apply the reschedule with new date and time"""
+        if not self.reschedule_approved:
+            raise ValidationError("Reschedule must be approved before applying")
+        
+        # Store old schedule
+        old_date = self.scheduled_date
+        old_time = self.scheduled_time
+        
+        # Update consultation
+        self.scheduled_date = new_date
+        self.scheduled_time = new_time
+        self.status = 'rescheduled'
+        self.reschedule_requested = False
+        self.reschedule_approved = False
+        self.reschedule_requested_at = None
+        self.reschedule_approved_at = None
+        self.rescheduled_at = timezone.now()
+        self.reschedule_reason = ""
+        self.save()
+        
+        # Create reschedule record
+        ConsultationReschedule.objects.create(
+            consultation=self,
+            old_date=old_date,
+            old_time=old_time,
+            new_date=new_date,
+            new_time=new_time,
+            reason=reason,
+            requested_by=self.reschedule_requested_by
+        )
+        
+        return True
     
     @property
     def is_checked_in(self):

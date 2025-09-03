@@ -273,3 +273,114 @@ class PrescriptionVitalSigns(models.Model):
         return f"Vital Signs for {self.prescription}"
 
 
+class InvestigationCategory(models.Model):
+    """Categories for different types of investigations/tests"""
+    
+    name = models.CharField(max_length=100, unique=True, help_text="Category name (e.g., Blood Tests, Imaging, etc.)")
+    description = models.TextField(blank=True, help_text="Description of the category")
+    is_active = models.BooleanField(default=True, help_text="Whether this category is active")
+    order = models.PositiveIntegerField(default=0, help_text="Display order")
+    
+    # Metadata
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+    
+    class Meta:
+        db_table = 'investigation_categories'
+        verbose_name = 'Investigation Category'
+        verbose_name_plural = 'Investigation Categories'
+        ordering = ['order', 'name']
+    
+    def __str__(self):
+        return self.name
+
+
+class InvestigationTest(models.Model):
+    """Individual investigation tests that doctors can prescribe"""
+    
+    category = models.ForeignKey(
+        InvestigationCategory,
+        on_delete=models.CASCADE,
+        related_name='tests'
+    )
+    
+    # Test Details
+    name = models.CharField(max_length=200, help_text="Name of the test")
+    code = models.CharField(max_length=50, blank=True, help_text="Test code/abbreviation")
+    description = models.TextField(blank=True, help_text="Description of what the test measures")
+    normal_range = models.CharField(max_length=200, blank=True, help_text="Normal range values")
+    unit = models.CharField(max_length=50, blank=True, help_text="Unit of measurement")
+    
+    # Test Properties
+    is_fasting_required = models.BooleanField(default=False, help_text="Whether fasting is required")
+    preparation_instructions = models.TextField(blank=True, help_text="Patient preparation instructions")
+    estimated_cost = models.DecimalField(max_digits=10, decimal_places=2, null=True, blank=True, help_text="Estimated cost of the test")
+    
+    # Status
+    is_active = models.BooleanField(default=True, help_text="Whether this test is available")
+    order = models.PositiveIntegerField(default=0, help_text="Display order within category")
+    
+    # Metadata
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+    
+    class Meta:
+        db_table = 'investigation_tests'
+        verbose_name = 'Investigation Test'
+        verbose_name_plural = 'Investigation Tests'
+        ordering = ['category__order', 'order', 'name']
+        unique_together = ['category', 'name']
+    
+    def __str__(self):
+        return f"{self.name} ({self.category.name})"
+
+
+class PrescriptionInvestigation(models.Model):
+    """Investigation tests prescribed in a prescription"""
+    
+    prescription = models.ForeignKey(
+        Prescription,
+        on_delete=models.CASCADE,
+        related_name='investigations'
+    )
+    
+    test = models.ForeignKey(
+        InvestigationTest,
+        on_delete=models.CASCADE,
+        related_name='prescriptions'
+    )
+    
+    # Prescription Details
+    priority = models.CharField(
+        max_length=20,
+        choices=[
+            ('routine', 'Routine'),
+            ('urgent', 'Urgent'),
+            ('emergency', 'Emergency'),
+        ],
+        default='routine',
+        help_text="Priority level of the test"
+    )
+    
+    # Instructions
+    special_instructions = models.TextField(blank=True, help_text="Special instructions for this test")
+    notes = models.TextField(blank=True, help_text="Additional notes")
+    
+    # Order
+    order = models.PositiveIntegerField(default=0, help_text="Order of investigation in prescription")
+    
+    # Metadata
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+    
+    class Meta:
+        db_table = 'prescription_investigations'
+        verbose_name = 'Prescription Investigation'
+        verbose_name_plural = 'Prescription Investigations'
+        ordering = ['order', 'created_at']
+        unique_together = ['prescription', 'test']
+    
+    def __str__(self):
+        return f"{self.test.name} for {self.prescription}"
+
+

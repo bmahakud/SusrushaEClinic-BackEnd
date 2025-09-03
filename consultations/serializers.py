@@ -494,6 +494,9 @@ class ConsultationListSerializer(serializers.ModelSerializer):
     patient_name = serializers.CharField(source='patient.name', read_only=True)
     doctor_name = serializers.CharField(source='doctor.name', read_only=True)
     doctor_meeting_link = serializers.SerializerMethodField(read_only=True)
+    is_overdue = serializers.SerializerMethodField()
+    hours_overdue = serializers.SerializerMethodField()
+    reschedule_status = serializers.SerializerMethodField()
     
     class Meta:
         model = Consultation
@@ -501,7 +504,8 @@ class ConsultationListSerializer(serializers.ModelSerializer):
             'id', 'patient', 'doctor', 'patient_name', 'doctor_name',
             'consultation_type', 'scheduled_date', 'scheduled_time', 'duration',
             'status', 'payment_status', 'consultation_fee', 'is_paid', 'created_at',
-            'doctor_meeting_link',
+            'doctor_meeting_link', 'is_overdue', 'hours_overdue', 'reschedule_status',
+            'reschedule_requested', 'reschedule_approved'
         ]
         read_only_fields = ['id', 'created_at']
 
@@ -509,6 +513,110 @@ class ConsultationListSerializer(serializers.ModelSerializer):
         if hasattr(obj, 'doctor') and hasattr(obj.doctor, 'doctor_profile') and hasattr(obj.doctor.doctor_profile, 'meeting_link'):
             return obj.doctor.doctor_profile.meeting_link
         return None
+    
+    def get_is_overdue(self, obj):
+        """Get whether consultation is overdue"""
+        return obj.is_overdue
+    
+    def get_hours_overdue(self, obj):
+        """Get hours overdue"""
+        return round(obj.hours_overdue, 1) if obj.hours_overdue else 0
+    
+    def get_reschedule_status(self, obj):
+        """Get reschedule status"""
+        if obj.reschedule_approved:
+            return 'approved'
+        elif obj.reschedule_requested:
+            return 'pending_approval'
+        elif obj.is_eligible_for_reschedule:
+            return 'eligible'
+        else:
+            return 'not_eligible'
+
+
+class ConsultationRescheduleRequestSerializer(serializers.Serializer):
+    """Serializer for requesting a consultation reschedule"""
+    reason = serializers.CharField(max_length=500, required=False, help_text="Reason for reschedule request")
+    
+    def validate(self, attrs):
+        """Validate reschedule request"""
+        consultation = self.context.get('consultation')
+        if not consultation:
+            raise serializers.ValidationError("Consultation is required")
+        
+        if not consultation.is_eligible_for_reschedule:
+            raise serializers.ValidationError("This consultation is not eligible for reschedule")
+        
+        return attrs
+
+
+class ConsultationRescheduleApprovalSerializer(serializers.Serializer):
+    """Serializer for approving a reschedule request"""
+    approve = serializers.BooleanField(help_text="Whether to approve the reschedule request")
+    reason = serializers.CharField(max_length=500, required=False, help_text="Additional notes for approval/rejection")
+
+
+class ConsultationRescheduleApplySerializer(serializers.Serializer):
+    """Serializer for applying an approved reschedule"""
+    new_date = serializers.DateField(help_text="New consultation date")
+    new_time = serializers.TimeField(help_text="New consultation time")
+    reason = serializers.CharField(max_length=500, required=False, help_text="Reason for the reschedule")
+    
+    def validate(self, attrs):
+        """Validate reschedule application"""
+        consultation = self.context.get('consultation')
+        if not consultation:
+            raise serializers.ValidationError("Consultation is required")
+        
+        if not consultation.reschedule_approved:
+            raise serializers.ValidationError("Reschedule must be approved before applying")
+        
+        # Check if new date/time is in the future
+        from django.utils import timezone
+        new_datetime = timezone.datetime.combine(attrs['new_date'], attrs['new_time'])
+        if new_datetime <= timezone.now():
+            raise serializers.ValidationError("New consultation time must be in the future")
+        
+        return attrs
+
+
+class ConsultationOverdueSerializer(serializers.ModelSerializer):
+    """Serializer for overdue consultations with reschedule information"""
+    patient_name = serializers.CharField(source='patient.name', read_only=True)
+    doctor_name = serializers.CharField(source='doctor.name', read_only=True)
+    hours_overdue = serializers.SerializerMethodField()
+    is_eligible_for_reschedule = serializers.SerializerMethodField()
+    reschedule_status = serializers.SerializerMethodField()
+    
+    class Meta:
+        model = Consultation
+        fields = [
+            'id', 'patient', 'doctor', 'patient_name', 'doctor_name',
+            'scheduled_date', 'scheduled_time', 'duration', 'status',
+            'hours_overdue', 'is_eligible_for_reschedule', 'reschedule_status',
+            'reschedule_requested', 'reschedule_requested_at', 'reschedule_reason',
+            'reschedule_approved', 'reschedule_approved_at', 'created_at'
+        ]
+        read_only_fields = ['id', 'created_at']
+    
+    def get_hours_overdue(self, obj):
+        """Get hours overdue"""
+        return round(obj.hours_overdue, 1) if obj.hours_overdue else 0
+    
+    def get_is_eligible_for_reschedule(self, obj):
+        """Get eligibility for reschedule"""
+        return obj.is_eligible_for_reschedule
+    
+    def get_reschedule_status(self, obj):
+        """Get reschedule status"""
+        if obj.reschedule_approved:
+            return 'approved'
+        elif obj.reschedule_requested:
+            return 'pending_approval'
+        elif obj.is_eligible_for_reschedule:
+            return 'eligible'
+        else:
+            return 'not_eligible'
 
 
 class ConsultationSearchSerializer(serializers.Serializer):

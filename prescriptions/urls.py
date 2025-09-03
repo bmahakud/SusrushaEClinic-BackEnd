@@ -3,7 +3,9 @@ from django.urls import path, include, re_path
 from .views import (
     PrescriptionViewSet, 
     PrescriptionMedicationViewSet, 
-    PrescriptionVitalSignsViewSet
+    PrescriptionVitalSignsViewSet,
+    InvestigationViewSet,
+    PrescriptionInvestigationViewSet
 )
 
 router = DefaultRouter()
@@ -41,6 +43,33 @@ custom_urlpatterns = [
     
     # Public verification endpoint (no authentication required)
     path('verify/<int:prescription_id>/', PrescriptionViewSet.as_view({'get': 'verify_prescription'}), name='prescription-verify'),
+    
+    # Investigation URLs
+    path('investigations/', InvestigationViewSet.as_view({
+        'get': 'list_all',
+        'post': 'create'
+    }), name='investigation-list'),
+    path('investigations/categories/', InvestigationViewSet.as_view({
+        'get': 'categories'
+    }), name='investigation-categories'),
+    path('investigations/tests/', InvestigationViewSet.as_view({
+        'get': 'tests'
+    }), name='investigation-tests'),
+
+    # Prescription Investigation URLs
+    path('investigations/prescription/', PrescriptionInvestigationViewSet.as_view({
+        'get': 'list',
+        'post': 'add_to_prescription'
+    }), name='prescription-investigation-list'),
+    path('investigations/prescription/remove/', PrescriptionInvestigationViewSet.as_view({
+        'delete': 'remove_from_prescription'
+    }), name='prescription-investigation-remove'),
+    path('investigations/prescription/<int:pk>/', PrescriptionInvestigationViewSet.as_view({
+        'get': 'retrieve',
+        'put': 'update',
+        'patch': 'partial_update',
+        'delete': 'destroy'
+    }), name='prescription-investigation-detail'),
 ]
 
 # Nested routes for prescription medications and vital signs

@@ -7,11 +7,11 @@ from django.utils import timezone
 from django.http import HttpResponse, Http404
 from django.conf import settings
 from drf_spectacular.utils import extend_schema, OpenApiParameter, OpenApiTypes
-from .models import Prescription, PrescriptionMedication, PrescriptionVitalSigns, PrescriptionPDF
+from .models import Prescription, PrescriptionMedication, PrescriptionVitalSigns, PrescriptionPDF, InvestigationCategory, InvestigationTest, PrescriptionInvestigation
 from .serializers import (
     PrescriptionSerializer, PrescriptionCreateSerializer, PrescriptionUpdateSerializer,
     PrescriptionListSerializer, PrescriptionDetailSerializer, PrescriptionMedicationSerializer,
-    PrescriptionVitalSignsSerializer
+    PrescriptionVitalSignsSerializer, InvestigationCategorySerializer, InvestigationTestSerializer, PrescriptionInvestigationSerializer
 )
 from .enhanced_pdf_generator import generate_prescription_pdf
 from utils.signed_urls import generate_signed_url
@@ -753,7 +753,7 @@ class PrescriptionViewSet(viewsets.ModelViewSet):
             
             # Check permissions
             user = request.user
-            print(f"DEBUG: User ID: {user.id}, Role: {user.role}, Username: {user.username}")
+            print(f"DEBUG: User ID: {user.id}, Role: {user.role}, Phone: {user.phone}")
             print(f"DEBUG: Prescription doctor: {prescription.doctor.id}, patient: {prescription.patient.id}")
             print(f"DEBUG: User == doctor: {user == prescription.doctor}")
             print(f"DEBUG: User == patient: {user == prescription.patient}")
@@ -1003,4 +1003,177 @@ class PrescriptionVitalSignsViewSet(viewsets.ModelViewSet):
         prescription_id = self.kwargs.get('prescription_pk')
         prescription = Prescription.objects.get(id=prescription_id)
         serializer.save(prescription=prescription)
+
+
+class InvestigationViewSet(viewsets.ModelViewSet):
+    """ViewSet for managing investigation categories and tests"""
+    
+    queryset = InvestigationCategory.objects.filter(is_active=True).prefetch_related('tests')
+    serializer_class = InvestigationCategorySerializer
+    permission_classes = [permissions.IsAuthenticated]
+    
+    @action(detail=False, methods=['get'])
+    def list_all(self, request):
+        """Get all investigation categories and tests"""
+        categories = InvestigationCategory.objects.filter(is_active=True).prefetch_related('tests')
+        tests = InvestigationTest.objects.filter(is_active=True).select_related('category')
+        
+        data = {
+            'categories': InvestigationCategorySerializer(categories, many=True).data,
+            'tests': InvestigationTestSerializer(tests, many=True).data
+        }
+        
+        return Response({
+            'success': True,
+            'data': data,
+            'message': 'Investigation list retrieved successfully'
+        })
+    
+    @action(detail=False, methods=['get'])
+    def categories(self, request):
+        """Get all investigation categories"""
+        categories = InvestigationCategory.objects.filter(is_active=True)
+        serializer = InvestigationCategorySerializer(categories, many=True)
+        
+        return Response({
+            'success': True,
+            'data': serializer.data,
+            'message': 'Categories retrieved successfully'
+        })
+    
+    @action(detail=False, methods=['get'])
+    def tests(self, request):
+        """Get all investigation tests"""
+        tests = InvestigationTest.objects.filter(is_active=True).select_related('category')
+        serializer = InvestigationTestSerializer(tests, many=True)
+        
+        return Response({
+            'success': True,
+            'data': serializer.data,
+            'message': 'Tests retrieved successfully'
+        })
+
+
+class PrescriptionInvestigationViewSet(viewsets.ModelViewSet):
+    """ViewSet for managing prescription investigations"""
+    
+    queryset = PrescriptionInvestigation.objects.all()
+    serializer_class = PrescriptionInvestigationSerializer
+    permission_classes = [permissions.IsAuthenticated]
+    
+    def get_queryset(self):
+        """Filter by prescription if provided"""
+        queryset = super().get_queryset()
+        prescription_id = self.request.query_params.get('prescription_id')
+        
+        if prescription_id:
+            queryset = queryset.filter(prescription_id=prescription_id)
+        
+        return queryset.select_related('test', 'test__category')
+    
+    @action(detail=False, methods=['post'])
+    def add_to_prescription(self, request):
+        """Add investigation tests to a prescription"""
+        prescription_id = request.data.get('prescription_id')
+        tests = request.data.get('tests', [])
+        
+        if not prescription_id:
+            return Response({
+                'success': False,
+                'message': 'Prescription ID is required'
+            }, status=400)
+        
+        try:
+            prescription = Prescription.objects.get(id=prescription_id)
+        except Prescription.DoesNotExist:
+            return Response({
+                'success': False,
+                'message': 'Prescription not found'
+            }, status=404)
+        
+        # Check if user has permission to modify this prescription
+        if not (request.user == prescription.doctor or request.user.is_staff):
+            return Response({
+                'success': False,
+                'message': 'You do not have permission to modify this prescription'
+            }, status=403)
+        
+        created_investigations = []
+        
+        for test_data in tests:
+            test_id = test_data.get('test_id')
+            priority = test_data.get('priority', 'routine')
+            special_instructions = test_data.get('special_instructions', '')
+            notes = test_data.get('notes', '')
+            
+            try:
+                test = InvestigationTest.objects.get(id=test_id, is_active=True)
+            except InvestigationTest.DoesNotExist:
+                continue
+            
+            # Create or update investigation
+            investigation, created = PrescriptionInvestigation.objects.get_or_create(
+                prescription=prescription,
+                test=test,
+                defaults={
+                    'priority': priority,
+                    'special_instructions': special_instructions,
+                    'notes': notes,
+                    'order': len(created_investigations) + 1
+                }
+            )
+            
+            if not created:
+                # Update existing investigation
+                investigation.priority = priority
+                investigation.special_instructions = special_instructions
+                investigation.notes = notes
+                investigation.save()
+            
+            created_investigations.append(investigation)
+        
+        serializer = PrescriptionInvestigationSerializer(created_investigations, many=True)
+        
+        return Response({
+            'success': True,
+            'data': serializer.data,
+            'message': f'{len(created_investigations)} investigation(s) added to prescription'
+        })
+    
+    @action(detail=False, methods=['delete'])
+    def remove_from_prescription(self, request):
+        """Remove investigation tests from a prescription"""
+        prescription_id = request.data.get('prescription_id')
+        test_ids = request.data.get('test_ids', [])
+        
+        if not prescription_id or not test_ids:
+            return Response({
+                'success': False,
+                'message': 'Prescription ID and test IDs are required'
+            }, status=400)
+        
+        try:
+            prescription = Prescription.objects.get(id=prescription_id)
+        except Prescription.DoesNotExist:
+            return Response({
+                'success': False,
+                'message': 'Prescription not found'
+            }, status=404)
+        
+        # Check if user has permission to modify this prescription
+        if not (request.user == prescription.doctor or request.user.is_staff):
+            return Response({
+                'success': False,
+                'message': 'You do not have permission to modify this prescription'
+            }, status=403)
+        
+        deleted_count = PrescriptionInvestigation.objects.filter(
+            prescription_id=prescription_id,
+            test_id__in=test_ids
+        ).delete()[0]
+        
+        return Response({
+            'success': True,
+            'message': f'{deleted_count} investigation(s) removed from prescription'
+        })
 

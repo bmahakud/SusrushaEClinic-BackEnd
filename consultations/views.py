@@ -29,7 +29,8 @@ from .serializers import (
     ConsultationNoteSerializer, ConsultationNoteCreateSerializer,
     ConsultationRescheduleSerializer, ConsultationRescheduleCreateSerializer,
     ConsultationReceiptSerializer, ConsultationReceiptCreateSerializer,
-    ConsultationCheckInSerializer, ConsultationReadySerializer, ConsultationStartSerializer
+    ConsultationCheckInSerializer, ConsultationReadySerializer, ConsultationStartSerializer,
+    ConsultationOverdueSerializer
 )
 from doctors.serializers import DoctorSlotSerializer
 from .services import WhatsAppNotificationService, ConsultationService, ConsultationAnalyticsService, ConsultationAutoCompletionService
@@ -2494,6 +2495,64 @@ class DoctorConsultationViewSet(ModelViewSet):
                 'success': True,
                 'data': response_data,
                 'message': 'Dashboard statistics retrieved successfully'
+            }, status=status.HTTP_200_OK)
+            
+        except Exception as e:
+            return Response({
+                'success': False,
+                'error': str(e)
+            }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+
+    @action(detail=False, methods=['get'], url_path='overdue')
+    def get_overdue_consultations(self, request):
+        """Get all overdue consultations (admin/superadmin/doctor)"""
+        try:
+            # Get overdue consultations using the service
+            from .services import ConsultationAutoCompletionService
+            overdue_consultations = ConsultationAutoCompletionService.get_overdue_consultations()
+            
+            # Filter based on user role (since service returns list of dicts, we filter after)
+            user = request.user
+            filtered_consultations = []
+            
+            for consultation_data in overdue_consultations:
+                # For role-based filtering, we need to get the actual consultation object
+                consultation_id = consultation_data['id']
+                try:
+                    consultation = Consultation.objects.get(id=consultation_id)
+                    
+                    # Apply role-based filtering
+                    if user.role == 'doctor':
+                        # Doctors can only see their own overdue consultations
+                        if consultation.doctor == user:
+                            filtered_consultations.append(consultation_data)
+                    elif user.role == 'admin':
+                        # Admins can see overdue consultations for their assigned clinic
+                        try:
+                            assigned_clinic = user.administered_clinic
+                            if assigned_clinic and consultation.clinic == assigned_clinic:
+                                filtered_consultations.append(consultation_data)
+                            elif not assigned_clinic:
+                                # Admin without clinic assignment can see all
+                                filtered_consultations.append(consultation_data)
+                        except AttributeError:
+                            # Admin without clinic assignment can see all
+                            filtered_consultations.append(consultation_data)
+                    else:
+                        # Superadmin can see all
+                        filtered_consultations.append(consultation_data)
+                        
+                except Consultation.DoesNotExist:
+                    continue  # Skip if consultation not found
+            
+            # Serialize the results using the overdue serializer
+            serializer = ConsultationOverdueSerializer(filtered_consultations, many=True)
+            
+            return Response({
+                'success': True,
+                'data': serializer.data,
+                'message': f'Found {len(filtered_consultations)} overdue consultations',
+                'timestamp': timezone.now().isoformat()
             }, status=status.HTTP_200_OK)
             
         except Exception as e:

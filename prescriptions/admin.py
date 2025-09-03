@@ -1,5 +1,5 @@
 from django.contrib import admin
-from .models import Prescription, PrescriptionMedication, PrescriptionVitalSigns, PrescriptionPDF
+from .models import Prescription, PrescriptionMedication, PrescriptionVitalSigns, PrescriptionPDF, InvestigationCategory, InvestigationTest, PrescriptionInvestigation
 
 
 class PrescriptionMedicationInline(admin.TabularInline):
@@ -167,3 +167,31 @@ class PrescriptionVitalSignsAdmin(admin.ModelAdmin):
             return f"{obj.blood_pressure_systolic}/{obj.blood_pressure_diastolic}"
         return "-"
     blood_pressure_display.short_description = "Blood Pressure"
+
+
+@admin.register(InvestigationCategory)
+class InvestigationCategoryAdmin(admin.ModelAdmin):
+    list_display = ['name', 'description', 'is_active', 'order', 'created_at']
+    list_filter = ['is_active', 'created_at']
+    search_fields = ['name', 'description']
+    ordering = ['order', 'name']
+    list_editable = ['is_active', 'order']
+
+
+@admin.register(InvestigationTest)
+class InvestigationTestAdmin(admin.ModelAdmin):
+    list_display = ['name', 'category', 'code', 'is_fasting_required', 'estimated_cost', 'is_active', 'order']
+    list_filter = ['category', 'is_fasting_required', 'is_active', 'created_at']
+    search_fields = ['name', 'code', 'description']
+    ordering = ['category__order', 'order', 'name']
+    list_editable = ['is_active', 'order', 'is_fasting_required']
+    autocomplete_fields = ['category']
+
+
+@admin.register(PrescriptionInvestigation)
+class PrescriptionInvestigationAdmin(admin.ModelAdmin):
+    list_display = ['prescription', 'test', 'priority', 'order', 'created_at']
+    list_filter = ['priority', 'created_at']
+    search_fields = ['prescription__id', 'test__name']
+    ordering = ['prescription', 'order']
+    autocomplete_fields = ['prescription', 'test']

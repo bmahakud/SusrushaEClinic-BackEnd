@@ -50,8 +50,8 @@ class WPDFGenerator:
 
         # Define colors based on image analysis
         self.line_color = colors.HexColor("#D3D3D3")  # Light gray for lines
-        self.heading_color = colors.HexColor("#36454F") # Charcoal gray for headings
-        self.order_medicine_color = colors.HexColor("#4CAF50") # Green for ORDER MEDICINE
+        self.heading_color = colors.HexColor("#E17726") # Orange for headings (app theme)
+        self.order_medicine_color = colors.HexColor("#E17726") # Orange for ORDER MEDICINE (app theme)
 
     def _download_logo(self, url):
         """Download logo from URL and save temporarily"""
@@ -140,7 +140,7 @@ class WPDFGenerator:
     def _draw_header(self):
         # Header background bar
         header_height = 90
-        self.c.setFillColor(colors.HexColor("#eaf3fa"))  # Light blue
+        self.c.setFillColor(colors.HexColor("#FFF3E0"))  # Light orange background
         self.c.rect(0, self.height - header_height, self.width, header_height, fill=True, stroke=False)
         self.c.setFillColor(colors.black)
 
@@ -180,12 +180,12 @@ class WPDFGenerator:
                 print(f"Center logo image error: {e}")
                 # Fallback to text if logo fails
                 self.c.setFont("Helvetica-Bold", 18)
-                self.c.setFillColor(colors.HexColor("#1976d2"))
+                self.c.setFillColor(colors.HexColor("#E17726"))  # Orange theme color
                 self.c.drawCentredString(self.width / 2, self.height - 40, "E-PRESCRIPTION")
         else:
             # Fallback to text if logo doesn't exist
             self.c.setFont("Helvetica-Bold", 18)
-            self.c.setFillColor(colors.HexColor("#1976d2"))
+            self.c.setFillColor(colors.HexColor("#E17726"))  # Orange theme color
             self.c.drawCentredString(self.width / 2, self.height - 40, "E-PRESCRIPTION")
         self.c.setFillColor(colors.black)
 
@@ -195,19 +195,30 @@ class WPDFGenerator:
         self.c.setFont("Helvetica-Bold", 12)
         doctor_name = getattr(self.prescription.doctor, 'name', 'Doctor')
         self.c.drawRightString(self.width - 40, right_y, f"Dr. {doctor_name}")
+        # Dynamic doctor details under name
+        try:
+            doctor_profile = self.prescription.doctor.doctor_profile
+            qualifications = getattr(doctor_profile, 'qualification', getattr(self.prescription.doctor, 'qualifications', ''))
+            specialization = getattr(doctor_profile, 'specialization', '')
+            license_number = getattr(doctor_profile, 'license_number', '')
+        except Exception:
+            qualifications = getattr(self.prescription.doctor, 'qualifications', '')
+            specialization = getattr(self.prescription.doctor, 'specialization', '')
+            license_number = getattr(self.prescription.doctor, 'registration_number', '')
         self.c.setFont("Helvetica", 10)
-        qualifications = getattr(self.prescription.doctor, 'qualifications', 'MBBS')
-        self.c.drawRightString(self.width - 40, right_y - 14, qualifications)
-        # Removed registration number line
-        doctor_phone = getattr(self.prescription.doctor, 'mobile', '')
-        if doctor_phone:
-            self.c.drawRightString(self.width - 40, right_y - 28, f"Phone: {doctor_phone}")
-        doctor_email = getattr(self.prescription.doctor, 'email', '')
-        if doctor_email:
-            self.c.drawRightString(self.width - 40, right_y - 42, doctor_email)
+        if qualifications:
+            self.c.drawRightString(self.width - 40, right_y - 14, qualifications)
+        if specialization or license_number:
+            self.c.drawRightString(self.width - 40, right_y - 28, f"{specialization} | {license_number}".strip().strip('| ').strip())
+        # Prescribed date
+        try:
+            prescribed_line = f"Prescribed on {self.prescription.issued_date.strftime('%d/%m/%Y')}"
+            self.c.drawRightString(self.width - 40, right_y - 42, prescribed_line)
+        except Exception:
+            pass
 
         # Underline below header
-        self.c.setStrokeColor(colors.HexColor("#1976d2"))
+        self.c.setStrokeColor(colors.HexColor("#E17726"))  # Orange theme color
         self.c.setLineWidth(2)
         self.c.line(30, self.height - header_height, self.width - 30, self.height - header_height)
         self.c.setLineWidth(1)
@@ -216,7 +227,7 @@ class WPDFGenerator:
         y_pos = self.height - 130 # Starting position after header
         self.c.setFillColor(self.heading_color)
         self.c.setFont("Helvetica-Bold", 10)
-        self.c.drawString(30, y_pos, "APPOINTMENT DETAILS")
+        self.c.drawString(30, y_pos, "PATIENT DETAILS")
         self.c.setStrokeColor(self.line_color)
         self.c.line(30, y_pos - 5, self.width - 30, y_pos - 5)
 
@@ -234,9 +245,9 @@ class WPDFGenerator:
         self.c.drawString(self.width / 2 + 20, y_pos, f"Consult Date: {self.prescription.issued_date.strftime('%d/%m/%Y')} at {self.prescription.issued_time.strftime('%I:%M %p')}")
 
         y_pos -= 15
-        patient_email = getattr(self.prescription.patient, 'email', 'patient@sushrusa.com')
+        # Removed email, keeping only mobile number
         patient_mobile = getattr(self.prescription.patient, 'mobile', '+918976358976')
-        self.c.drawString(30, y_pos, f"Contact: {patient_email} | {patient_mobile}")
+        self.c.drawString(30, y_pos, f"Contact: {patient_mobile}")
         
         # Dynamic consultation type
         consultation_type = "Online"
@@ -437,7 +448,12 @@ class WPDFGenerator:
 
         self.c.setStrokeColor(self.line_color)
         self.c.line(30, y_pos - 10, self.width - 30, y_pos - 10)
-        self._draw_advice_instructions(y_pos - 20)
+        
+        # Draw investigation tests first
+        y_pos = self._draw_investigation_tests(y_pos - 20)
+        
+        # Then draw advice and instructions
+        self._draw_advice_instructions(y_pos)
 
     def _draw_doctor_signature(self):
         """Draw doctor signature for single page prescriptions"""
@@ -669,34 +685,96 @@ class WPDFGenerator:
         self.c.setStrokeColor(self.line_color)
         self.c.line(30, y_pos - 10, self.width - 30, y_pos - 10)
 
-    def _draw_footer(self, page_num, total_pages):
-        self.c.setFillColor(colors.black)
-        self.c.setFont("Helvetica", 8)
-        self.c.drawString(30, 30, f"Page {page_num} of {total_pages}")
-        disclaimer = "Disclaimer: This prescription is issued on the basis of your inputs during teleconsultation. It is valid from the date of issue until the specific period/dosage of each medicine as advised."
-        styles = getSampleStyleSheet()
-        style = styles["Normal"]
-        style.fontSize = 8
-        style.alignment = 0
-        disclaimer_width = self.width - 30 - 30 - 100
-        p = Paragraph(disclaimer, style)
-        text_height = p.wrapOn(self.c, disclaimer_width, self.height)[1]
-        p.drawOn(self.c, 130, 30)
-        # QR code for verification
+    def _draw_investigation_tests(self, start_y_pos=None):
+        """Draw investigation tests section"""
+        if start_y_pos is None:
+            y_pos = self.height - 580
+        else:
+            y_pos = start_y_pos
+        
+        # If we're too close to bottom, start new page
+        if y_pos < 200:
+            self.c.showPage()
+            self._draw_header()  # Redraw header on new page
+            y_pos = self.height - 200  # Reset position for new page
+        
+        # Get investigation tests for this prescription
         try:
-            import qrcode
-            qr_data = f"https://sushrusaeclinic.com/prescription/verify/{self.prescription.id}"
-            qr = qrcode.make(qr_data)
-            qr_io = BytesIO()
-            qr.save(qr_io, format='PNG')
-            qr_io.seek(0)
-            qr_img = ImageReader(qr_io)
-            self.c.drawImage(qr_img, self.width - 90, 20, width=50, height=50, preserveAspectRatio=True)
+            investigations = self.prescription.investigations.all().order_by('order')
+            if investigations.exists():
+                self.c.setFillColor(self.heading_color)
+                self.c.setFont("Helvetica-Bold", 10)
+                self.c.drawString(30, y_pos, "INVESTIGATION TESTS")
+                self.c.setStrokeColor(self.line_color)
+                self.c.line(30, y_pos - 5, self.width - 30, y_pos - 5)
+                
+                y_pos -= 35  # Increased margin from 20 to 35 for even better spacing
+                self.c.setFillColor(colors.black)
+                self.c.setFont("Helvetica", 9)
+                
+                # Draw investigation tests in a table format
+                for idx, investigation in enumerate(investigations):
+                    # Alternate row color
+                    if idx % 2 == 0:
+                        self.c.setFillColor(colors.whitesmoke)
+                    else:
+                        self.c.setFillColor(colors.HexColor("#e9f0fb"))
+                    
+                    # Draw row background
+                    row_height = 25
+                    self.c.rect(30, y_pos - 2, self.width - 60, row_height, fill=True, stroke=False)
+                    self.c.setFillColor(colors.black)
+                    
+                    # Test name and category
+                    test_name = investigation.test.name
+                    category_name = investigation.test.category.name
+                    priority = investigation.priority.upper()
+                    
+                    # Draw test information
+                    self.c.setFont("Helvetica-Bold", 9)
+                    self.c.drawString(35, y_pos + 15, f"{test_name}")
+                    self.c.setFont("Helvetica", 8)
+                    self.c.drawString(35, y_pos + 5, f"Category: {category_name}")
+                    
+                    # Priority and cost
+                    self.c.setFont("Helvetica-Bold", 8)
+                    self.c.drawString(self.width - 200, y_pos + 15, f"Priority: {priority}")
+                    if investigation.test.estimated_cost:
+                        self.c.drawString(self.width - 200, y_pos + 5, f"Cost: ₹{investigation.test.estimated_cost}")
+                    
+                    # Special instructions if any
+                    if investigation.special_instructions:
+                        self.c.setFont("Helvetica", 8)
+                        self.c.drawString(35, y_pos - 5, f"Instructions: {investigation.special_instructions}")
+                    
+                    y_pos -= (row_height + 5)
+                    
+                    # Check if we need a page break
+                    if y_pos < 120:
+                        self.c.showPage()
+                        self._draw_header()
+                        y_pos = self.height - 120
+                
+                # Add line after investigations
+                self.c.setStrokeColor(self.line_color)
+                self.c.line(30, y_pos - 10, self.width - 30, y_pos - 10)
+                
+                return y_pos - 20  # Return the new y position
+            else:
+                return start_y_pos  # No investigations, return original position
+                
         except Exception as e:
-            print(f"QR code generation failed: {e}")
+            print(f"Error drawing investigation tests: {e}")
+            return start_y_pos  # Return original position on error
+
+    def _draw_footer(self, page_num, total_pages):
+        # Simplified footer with just blank space at bottom
+        # Add blank space at bottom
+        self.c.setFillColor(colors.white)
+        self.c.rect(0, 0, self.width, 80, fill=True, stroke=False)
 
     def generate_pdf(self):
-        # Page 1 - Always start with single page
+        # Single page prescription - everything on one page
         self._draw_header()
         self._draw_appointment_details()
         self._draw_vital_signs()
@@ -704,30 +782,9 @@ class WPDFGenerator:
         self._draw_diagnosis()
         self._draw_medication()
         
-        # Check if we need a second page for doctor signature
-        # Only create second page if medications are very long or if there's not enough space
-        medications = self.prescription.medications.all().order_by('order')
-        medication_count = medications.count()
-        
-        # Estimate if we need second page (more than 5 medications or very long instructions)
-        needs_second_page = medication_count > 5 or len(getattr(self.prescription, 'general_instructions', '')) > 200
-        
-        if needs_second_page:
-            # If second page needed, add doctor signature on page 2
-            self._draw_footer(1, 2)
-            self.c.showPage()
-            
-            # Page 2 - Only doctor signature
-            self._draw_header()
-            
-            # Draw doctor signature on page 2
-            self._draw_doctor_signature_page2()
-            
-            self._draw_footer(2, 2)
-        else:
-            # Single page - add doctor signature on same page
-            self._draw_doctor_signature()
-            self._draw_footer(1, 1)
+        # Add footer and signature on same page
+        self._draw_footer(1, 1)
+        self._draw_doctor_signature()
         
         self.c.save()
         

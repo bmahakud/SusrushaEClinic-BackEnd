@@ -1,5 +1,5 @@
 from rest_framework import serializers
-from .models import Prescription, PrescriptionMedication, PrescriptionVitalSigns, PrescriptionPDF
+from .models import Prescription, PrescriptionMedication, PrescriptionVitalSigns, PrescriptionPDF, InvestigationCategory, InvestigationTest, PrescriptionInvestigation
 
 # Simple User Serializer for prescription system
 class UserSerializer(serializers.Serializer):
@@ -59,6 +59,50 @@ class PrescriptionMedicationSerializer(serializers.ModelSerializer):
         frequency_map = dict(PrescriptionMedication.FREQUENCY_CHOICES)
         return frequency_map.get(obj.frequency, obj.frequency)
 
+class InvestigationCategorySerializer(serializers.ModelSerializer):
+    """Serializer for investigation categories"""
+    
+    class Meta:
+        model = InvestigationCategory
+        fields = '__all__'
+
+
+class InvestigationTestSerializer(serializers.ModelSerializer):
+    """Serializer for investigation tests"""
+    
+    category = InvestigationCategorySerializer(read_only=True)
+    category_id = serializers.IntegerField(write_only=True)
+    
+    class Meta:
+        model = InvestigationTest
+        fields = '__all__'
+
+
+class PrescriptionInvestigationSerializer(serializers.ModelSerializer):
+    """Serializer for prescription investigations"""
+    
+    test = InvestigationTestSerializer(read_only=True)
+    test_id = serializers.IntegerField(write_only=True)
+    
+    class Meta:
+        model = PrescriptionInvestigation
+        fields = '__all__'
+
+
+class PrescriptionInvestigationCreateSerializer(serializers.ModelSerializer):
+    """Serializer for creating prescription investigations"""
+    
+    class Meta:
+        model = PrescriptionInvestigation
+        fields = ['test_id', 'priority', 'special_instructions', 'notes', 'order']
+
+
+class InvestigationListResponseSerializer(serializers.Serializer):
+    """Response serializer for investigation list"""
+    categories = InvestigationCategorySerializer(many=True)
+    tests = InvestigationTestSerializer(many=True)
+
+
 class PrescriptionSerializer(serializers.ModelSerializer):
     """Enhanced prescription serializer"""
     
@@ -69,6 +113,7 @@ class PrescriptionSerializer(serializers.ModelSerializer):
     consultation_time = serializers.TimeField(source='consultation.scheduled_time', read_only=True)
     medications = PrescriptionMedicationSerializer(many=True, read_only=True)
     vital_signs = PrescriptionVitalSignsSerializer(read_only=True)
+    investigations = PrescriptionInvestigationSerializer(many=True, read_only=True)
     
     # Computed fields
     patient_age = serializers.SerializerMethodField()
@@ -86,7 +131,7 @@ class PrescriptionSerializer(serializers.ModelSerializer):
             'general_instructions', 'fluid_intake', 'diet_instructions', 'lifestyle_advice',
             'next_visit', 'follow_up_notes',
             'is_draft', 'is_finalized',
-            'medications', 'vital_signs',
+            'medications', 'vital_signs', 'investigations',
             'created_at', 'updated_at'
         ]
         read_only_fields = ['id', 'issued_date', 'issued_time', 'created_at', 'updated_at']
@@ -199,6 +244,9 @@ class PrescriptionUpdateSerializer(serializers.ModelSerializer):
                 vital_signs.save()
         
         return instance
+
+
+
 
 class PrescriptionListSerializer(serializers.ModelSerializer):
     """Serializer for listing prescriptions"""
@@ -348,6 +396,50 @@ class PrescriptionWithPDFSerializer(PrescriptionDetailSerializer):
                 context=self.context
             ).data
         return None
+
+
+class InvestigationCategorySerializer(serializers.ModelSerializer):
+    """Serializer for investigation categories"""
+    
+    class Meta:
+        model = InvestigationCategory
+        fields = '__all__'
+
+
+class InvestigationTestSerializer(serializers.ModelSerializer):
+    """Serializer for investigation tests"""
+    
+    category = InvestigationCategorySerializer(read_only=True)
+    category_id = serializers.IntegerField(write_only=True)
+    
+    class Meta:
+        model = InvestigationTest
+        fields = '__all__'
+
+
+class PrescriptionInvestigationSerializer(serializers.ModelSerializer):
+    """Serializer for prescription investigations"""
+    
+    test = InvestigationTestSerializer(read_only=True)
+    test_id = serializers.IntegerField(write_only=True)
+    
+    class Meta:
+        model = PrescriptionInvestigation
+        fields = '__all__'
+
+
+class PrescriptionInvestigationCreateSerializer(serializers.ModelSerializer):
+    """Serializer for creating prescription investigations"""
+    
+    class Meta:
+        model = PrescriptionInvestigation
+        fields = ['test_id', 'priority', 'special_instructions', 'notes', 'order']
+
+
+class InvestigationListResponseSerializer(serializers.Serializer):
+    """Response serializer for investigation list"""
+    categories = InvestigationCategorySerializer(many=True)
+    tests = InvestigationTestSerializer(many=True)
 
 
 
