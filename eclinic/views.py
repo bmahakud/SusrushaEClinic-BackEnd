@@ -556,7 +556,7 @@ class ClinicInventoryViewSet(ModelViewSet):
     def auto_create_medication(self, request, clinic_id=None):
         """Auto-create medication in clinic inventory from global catalog"""
         try:
-            # First, verify that the clinic exists
+            # First, verify that the clinic exists (optional, can be removed if not needed)
             try:
                 clinic = Clinic.objects.get(id=clinic_id)
             except Clinic.DoesNotExist:
@@ -568,165 +568,57 @@ class ClinicInventoryViewSet(ModelViewSet):
                     },
                     'timestamp': timezone.now().isoformat()
                 }, status=status.HTTP_404_NOT_FOUND)
-            
+
             data = request.data
-            global_medication_id = data.get('global_medication_id')
             name = data.get('name', '').strip()
             composition = data.get('composition', '').strip()
             dosage_form = data.get('dosage_form', 'Tablet').strip()
-            
-            if not global_medication_id and not name:
+            strength = data.get('strength', '').strip()
+
+            if not name:
                 return Response({
                     'success': False,
                     'error': {
                         'code': 'MISSING_DATA',
-                        'message': 'Either global_medication_id or name is required'
+                        'message': 'Name is required'
                     },
                     'timestamp': timezone.now().isoformat()
                 }, status=status.HTTP_400_BAD_REQUEST)
-            
-            # If global_medication_id is provided, link to existing global medication
-            if global_medication_id:
-                try:
-                    global_medication = GlobalMedication.objects.get(id=global_medication_id, is_active=True)
-                    
-                    # Check if already exists in clinic inventory
-                    existing_inventory = ClinicInventory.objects.filter(
-                        clinic_id=clinic_id,
-                        global_medication=global_medication
-                    ).first()
-                    
-                    if existing_inventory:
-                        return Response({
-                            'success': True,
-                            'data': {
-                                'medication': {
-                                    'id': existing_inventory.id,
-                                    'name': global_medication.display_name,
-                                    'strength': global_medication.strength or '',
-                                    'form': global_medication.get_dosage_form_display(),
-                                    'source': 'existing_inventory',
-                                    'stock': existing_inventory.current_stock,
-                                    'unit': existing_inventory.unit,
-                                    'is_low_stock': existing_inventory.is_low_stock,
-                                    'expiry_date': existing_inventory.expiry_date,
-                                    'supplier': existing_inventory.supplier_name
-                                },
-                                'message': 'Medication already exists in clinic inventory'
-                            },
-                            'message': 'Medication found in existing inventory',
-                            'timestamp': timezone.now().isoformat()
-                        })
-                    
-                    # Create new inventory item linked to global medication
-                    new_inventory = ClinicInventory.objects.create(
-                        clinic_id=clinic_id,
-                        global_medication=global_medication,
-                        category='medicine',
-                        item_name=global_medication.display_name,
-                        description=global_medication.composition,
-                        brand=global_medication.get_dosage_form_display(),
-                        current_stock=0,
-                        minimum_stock=10,  # Set minimum stock to trigger low stock
-                        unit='units',
-                        supplier_name='Auto-created from prescription'
-                    )
-                    
-                    return Response({
-                        'success': True,
-                        'data': {
-                            'medication': {
-                                'id': new_inventory.id,
-                                'name': global_medication.display_name,
-                                'strength': global_medication.strength or '',
-                                'form': global_medication.get_dosage_form_display(),
-                                'source': 'newly_created',
-                                'stock': new_inventory.current_stock,
-                                'unit': new_inventory.unit,
-                                'is_low_stock': new_inventory.is_low_stock,
-                                'expiry_date': new_inventory.expiry_date,
-                                'supplier': new_inventory.supplier_name
-                            },
-                            'message': 'Medication created successfully in clinic inventory'
-                        },
-                        'message': 'Medication created successfully',
-                        'timestamp': timezone.now().isoformat()
-                    })
-                    
-                except GlobalMedication.DoesNotExist:
-                    return Response({
-                        'success': False,
-                        'error': {
-                            'code': 'MEDICATION_NOT_FOUND',
-                            'message': 'Global medication not found'
-                        },
-                        'timestamp': timezone.now().isoformat()
-                    }, status=status.HTTP_404_NOT_FOUND)
-            
-            # If no global_medication_id, create clinic-specific medication
-            else:
-                # Check if medication already exists in clinic inventory
-                existing_medication = ClinicInventory.objects.filter(
-                    clinic_id=clinic_id,
-                    category='medicine',
-                    item_name__iexact=name
-                ).first()
-                
-                if existing_medication:
-                    return Response({
-                        'success': True,
-                        'data': {
-                            'medication': {
-                                'id': existing_medication.id,
-                                'name': existing_medication.item_name,
-                                'strength': existing_medication.description or '',
-                                'form': existing_medication.brand or 'Tablet',
-                                'source': 'existing_inventory',
-                                'stock': existing_medication.current_stock,
-                                'unit': existing_medication.unit,
-                                'is_low_stock': existing_medication.is_low_stock,
-                                'expiry_date': existing_medication.expiry_date,
-                                'supplier': existing_medication.supplier_name
-                            },
-                            'message': 'Medication already exists in clinic inventory'
-                        },
-                        'message': 'Medication found in existing inventory',
-                        'timestamp': timezone.now().isoformat()
-                    })
-                
-                # Create new clinic-specific medication
-                new_medication = ClinicInventory.objects.create(
-                    clinic_id=clinic_id,
-                    category='medicine',
-                    item_name=name,
-                    description=composition,
-                    brand=dosage_form,
-                    current_stock=0,
-                    minimum_stock=10,  # Set minimum stock to trigger low stock
-                    unit='units',
-                    supplier_name='Auto-created from prescription'
-                )
-                
+
+            # Check if medication already exists in global catalog
+            existing_med = GlobalMedication.objects.filter(name__iexact=name, is_active=True).first()
+            if existing_med:
+                serializer = GlobalMedicationSerializer(existing_med)
                 return Response({
                     'success': True,
                     'data': {
-                        'medication': {
-                            'id': new_medication.id,
-                            'name': new_medication.item_name,
-                            'strength': new_medication.description or '',
-                            'form': new_medication.brand or 'Tablet',
-                            'source': 'newly_created',
-                            'stock': new_medication.current_stock,
-                            'unit': new_medication.unit,
-                            'is_low_stock': new_medication.is_low_stock,
-                            'expiry_date': new_medication.expiry_date,
-                            'supplier': new_medication.supplier_name
-                        },
-                        'message': 'Medication created successfully in clinic inventory'
+                        'medication': serializer.data,
+                        'message': 'Medication already exists in global catalog'
                     },
-                    'message': 'Medication created successfully',
+                    'message': 'Medication found in global catalog',
                     'timestamp': timezone.now().isoformat()
                 })
+
+            # Create new global medication
+            new_med = GlobalMedication.objects.create(
+                name=name,
+                composition=composition,
+                dosage_form=dosage_form,
+                strength=strength,
+                is_active=True,
+                is_verified=False,
+                created_by=request.user
+            )
+            serializer = GlobalMedicationSerializer(new_med)
+            return Response({
+                'success': True,
+                'data': {
+                    'medication': serializer.data,
+                    'message': 'Medication created successfully in global catalog'
+                },
+                'message': 'Medication created successfully',
+                'timestamp': timezone.now().isoformat()
+            })
             
         except Exception as e:
             return Response({

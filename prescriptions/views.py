@@ -1010,7 +1010,7 @@ class InvestigationViewSet(viewsets.ModelViewSet):
     
     queryset = InvestigationCategory.objects.filter(is_active=True).prefetch_related('tests')
     serializer_class = InvestigationCategorySerializer
-    permission_classes = []  # Temporarily disable authentication for testing
+    permission_classes = [permissions.IsAuthenticated]
     
     @action(detail=False, methods=['get'])
     def list_all(self, request):

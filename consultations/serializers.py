@@ -677,7 +677,7 @@ class ConsultationDetailSerializer(serializers.ModelSerializer):
     
     recorded_symptoms = ConsultationSymptomSerializer(many=True, read_only=True)
     diagnoses = ConsultationDiagnosisSerializer(many=True, read_only=True)
-    vital_signs = ConsultationVitalSignsSerializer(many=True, read_only=True)
+    vital_signs = serializers.SerializerMethodField(read_only=True)
     attachments = ConsultationAttachmentSerializer(many=True, read_only=True)
     notes = ConsultationNoteSerializer(many=True, read_only=True)
     reschedules = ConsultationRescheduleSerializer(many=True, read_only=True)
@@ -759,6 +759,14 @@ class ConsultationDetailSerializer(serializers.ModelSerializer):
             return None
         except Exception as e:
             print(f"Error getting prescription data: {e}")
+            return None
+
+    def get_vital_signs(self, obj):
+        from .models import ConsultationVitalSigns
+        try:
+            vital = ConsultationVitalSigns.objects.get(consultation=obj)
+            return ConsultationVitalSignsSerializer(vital).data
+        except ConsultationVitalSigns.DoesNotExist:
             return None
 
 
