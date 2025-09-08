@@ -88,7 +88,7 @@ def vital_signs_notification(sender, instance, created, **kwargs):
             'type': 'vital_signs_recorded',
             'consultation_id': instance.consultation.id,
             'patient_name': instance.consultation.patient.name,
-            'recorded_by': instance.recorded_by.name,
+            'recorded_by': instance.recorded_by.name if instance.recorded_by else 'System',
             'timestamp': timezone.now().isoformat()
         }
         
