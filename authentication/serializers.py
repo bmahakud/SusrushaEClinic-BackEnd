@@ -248,6 +248,37 @@ class UpdateProfileSerializer(serializers.ModelSerializer):
         return value
 
 
+class AdminUpdateUserSerializer(serializers.ModelSerializer):
+    """Serializer for admin/superadmin updating any user profile including phone"""
+    
+    class Meta:
+        model = User
+        fields = [
+            'name', 'email', 'phone', 'date_of_birth', 'gender', 'profile_picture',
+            'street', 'city', 'state', 'pincode', 'country',
+            'emergency_contact_name', 'emergency_contact_phone', 'emergency_contact_relationship',
+            'blood_group', 'allergies', 'medical_history'
+        ]
+    
+    def validate_email(self, value):
+        """Validate email uniqueness"""
+        if value:
+            # Check if email exists for other users
+            existing_user = User.objects.filter(email=value).exclude(id=self.instance.id).first()
+            if existing_user:
+                raise serializers.ValidationError(f'Email already exists for user: {existing_user.name} (ID: {existing_user.id})')
+        return value
+    
+    def validate_phone(self, value):
+        """Validate phone uniqueness"""
+        if value:
+            # Check if phone exists for other users
+            existing_user = User.objects.filter(phone=value).exclude(id=self.instance.id).first()
+            if existing_user:
+                raise serializers.ValidationError(f'Phone number already exists for user: {existing_user.name} (ID: {existing_user.id})')
+        return value
+
+
 class RefreshTokenSerializer(serializers.Serializer):
     """Serializer for refreshing JWT token"""
     refresh = serializers.CharField()

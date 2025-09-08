@@ -20,7 +20,7 @@ _otp_storage_lock = threading.Lock()
 from .models import User, UserSession
 from .serializers import (
     SendOTPSerializer, VerifyOTPSerializer, UserProfileSerializer,
-    UpdateProfileSerializer, RefreshTokenSerializer, LogoutSerializer,
+    UpdateProfileSerializer, AdminUpdateUserSerializer, RefreshTokenSerializer, LogoutSerializer,
     ChangePasswordSerializer, UserSessionSerializer
 )
 
@@ -667,7 +667,7 @@ class AdminUserDetailView(APIView):
             }, status=status.HTTP_404_NOT_FOUND)
     
     @extend_schema(
-        request=UpdateProfileSerializer,
+        request=AdminUpdateUserSerializer,
         responses={200: dict, 400: dict, 404: dict},
         description="Update user details (Admin only)"
     )
@@ -675,7 +675,7 @@ class AdminUserDetailView(APIView):
         """Update user details"""
         try:
             user = User.objects.get(id=user_id)
-            serializer = UpdateProfileSerializer(user, data=request.data, partial=True)
+            serializer = AdminUpdateUserSerializer(user, data=request.data, partial=True)
             
             if serializer.is_valid():
                 serializer.save()
