@@ -984,3 +984,179 @@ def create_test_logo():
         print(f"❌ Failed to create test logo: {e}")
         return None
 
+
+def generate_mobile_prescription_pdf(prescription, uploaded_image_path):
+    """
+    Generate a mobile prescription PDF with uploaded image at the bottom of vital signs
+    """
+    try:
+        # Create PDF generator instance
+        generator = WPDFGenerator(prescription, "mobile_prescription.pdf")
+        
+        # Generate the base PDF with all sections except the image
+        pdf_path = generator.generate_pdf()
+        
+        # Now we need to add the uploaded image to the PDF
+        # For now, we'll use the existing PDF generation and modify it to include the image
+        # This is a simplified approach - in production, you might want to use a more sophisticated PDF manipulation library
+        
+        # Create a new PDF with the image
+        from reportlab.pdfgen import canvas
+        from reportlab.lib.pagesizes import A4
+        from reportlab.lib.utils import ImageReader
+        from django.conf import settings
+        import os
+        
+        # Create output path
+        output_dir = os.path.join(settings.MEDIA_ROOT, "prescriptions", "pdfs", prescription.consultation_id)
+        os.makedirs(output_dir, exist_ok=True)
+        
+        timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+        output_filename = f"mobile_prescription_{timestamp}.pdf"
+        output_path = os.path.join(output_dir, output_filename)
+        
+        # Create new PDF with image
+        c = canvas.Canvas(output_path, pagesize=A4)
+        width, height = A4
+        
+        # Draw the prescription content (simplified version for mobile)
+        _draw_mobile_prescription_content(c, prescription, uploaded_image_path, width, height)
+        
+        c.save()
+        
+        return output_path
+        
+    except Exception as e:
+        print(f"Error generating mobile PDF: {e}")
+        raise e
+
+
+def _draw_mobile_prescription_content(canvas, prescription, image_path, width, height):
+    """
+    Draw mobile prescription content with uploaded image
+    """
+    try:
+        # Header
+        canvas.setFillColor(colors.HexColor('#FFF3E0'))
+        canvas.rect(0, height - 80, width, 80, fill=True, stroke=False)
+        
+        # Logo
+        logo_path = os.path.join(settings.MEDIA_ROOT, "sushrusa_logo_1-Photoroom.png")
+        if os.path.exists(logo_path):
+            logo = ImageReader(logo_path)
+            canvas.drawImage(logo, 30, height - 60, width=40, height=40)
+        
+        # Title
+        canvas.setFillColor(colors.HexColor('#E17726'))
+        canvas.setFont("Helvetica-Bold", 16)
+        canvas.drawString(80, height - 45, "SUSHRUSA eCLINIC")
+        canvas.drawString(80, height - 60, "PRESCRIPTION")
+        
+        # Doctor info
+        canvas.setFont("Helvetica", 10)
+        canvas.setFillColor(colors.black)
+        doctor = prescription.doctor
+        canvas.drawString(30, height - 100, f"Dr. {doctor.get('name', 'N/A')}")
+        canvas.drawString(30, height - 115, f"{doctor.get('qualification', 'MBBS')} | {doctor.get('specialization', 'General Medicine')}")
+        canvas.drawString(30, height - 130, f"Registration: {doctor.get('registration_number', 'N/A')}")
+        
+        # Prescribed date
+        canvas.drawString(width - 150, height - 100, f"Prescribed on {prescription.issued_date}")
+        
+        # Patient details
+        y_pos = height - 180
+        canvas.setFont("Helvetica-Bold", 12)
+        canvas.setFillColor(colors.HexColor('#E17726'))
+        canvas.drawString(30, y_pos, "PATIENT DETAILS")
+        
+        y_pos -= 20
+        canvas.setFont("Helvetica", 10)
+        canvas.setFillColor(colors.black)
+        patient = prescription.patient
+        canvas.drawString(30, y_pos, f"Name: {patient.get('name', 'N/A')}")
+        y_pos -= 15
+        canvas.drawString(30, y_pos, f"Age: {prescription.patient_age} years | Gender: {prescription.patient_gender}")
+        y_pos -= 15
+        canvas.drawString(30, y_pos, f"Mobile: {patient.get('phone', 'N/A')}")
+        
+        # Vital signs
+        y_pos -= 30
+        canvas.setFont("Helvetica-Bold", 12)
+        canvas.setFillColor(colors.HexColor('#E17726'))
+        canvas.drawString(30, y_pos, "VITAL SIGNS")
+        
+        y_pos -= 20
+        canvas.setFont("Helvetica", 10)
+        canvas.setFillColor(colors.black)
+        
+        vital_signs = prescription.vital_signs
+        if vital_signs:
+            if vital_signs.get('pulse'):
+                canvas.drawString(30, y_pos, f"Pulse: {vital_signs.pulse} bpm")
+                y_pos -= 15
+            if vital_signs.get('blood_pressure_systolic') and vital_signs.get('blood_pressure_diastolic'):
+                canvas.drawString(30, y_pos, f"Blood Pressure: {vital_signs.blood_pressure_systolic}/{vital_signs.blood_pressure_diastolic} mmHg")
+                y_pos -= 15
+            if vital_signs.get('temperature'):
+                canvas.drawString(30, y_pos, f"Temperature: {vital_signs.temperature}°F")
+                y_pos -= 15
+            if vital_signs.get('weight'):
+                canvas.drawString(30, y_pos, f"Weight: {vital_signs.weight} kg")
+                y_pos -= 15
+            if vital_signs.get('height'):
+                canvas.drawString(30, y_pos, f"Height: {vital_signs.height} cm")
+                y_pos -= 15
+        
+        # Add uploaded image at the bottom of vital signs
+        y_pos -= 20
+        try:
+            # Check if image exists
+            full_image_path = os.path.join(settings.MEDIA_ROOT, image_path)
+            if os.path.exists(full_image_path):
+                # Add image title
+                canvas.setFont("Helvetica-Bold", 12)
+                canvas.setFillColor(colors.HexColor('#E17726'))
+                canvas.drawString(30, y_pos, "PRESCRIPTION IMAGE")
+                y_pos -= 20
+                
+                # Load and draw the image
+                img = ImageReader(full_image_path)
+                
+                # Calculate image dimensions (max width 400px, maintain aspect ratio)
+                img_width, img_height = img.getSize()
+                max_width = 400
+                if img_width > max_width:
+                    ratio = max_width / img_width
+                    img_width = max_width
+                    img_height = img_height * ratio
+                
+                # Draw image
+                canvas.drawImage(img, 30, y_pos - img_height, width=img_width, height=img_height)
+                y_pos -= img_height + 20
+            else:
+                canvas.setFont("Helvetica", 10)
+                canvas.setFillColor(colors.red)
+                canvas.drawString(30, y_pos, "Image not found")
+                y_pos -= 20
+        except Exception as e:
+            canvas.setFont("Helvetica", 10)
+            canvas.setFillColor(colors.red)
+            canvas.drawString(30, y_pos, f"Error loading image: {str(e)}")
+            y_pos -= 20
+        
+        # Doctor signature area
+        y_pos -= 30
+        canvas.setFont("Helvetica-Bold", 12)
+        canvas.setFillColor(colors.HexColor('#E17726'))
+        canvas.drawString(30, y_pos, "DOCTOR'S SIGNATURE")
+        
+        y_pos -= 40
+        canvas.setFont("Helvetica", 10)
+        canvas.setFillColor(colors.black)
+        canvas.drawString(30, y_pos, f"Dr. {doctor.get('name', 'N/A')}")
+        canvas.drawString(30, y_pos - 15, f"{doctor.get('qualification', 'MBBS')} | {doctor.get('specialization', 'General Medicine')}")
+        
+    except Exception as e:
+        print(f"Error drawing mobile prescription content: {e}")
+        raise e
+

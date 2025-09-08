@@ -108,6 +108,7 @@ class PrescriptionPDF(models.Model):
         related_name='generated_prescription_pdfs'
     )
     generated_at = models.DateTimeField(auto_now_add=True)
+    is_mobile_generated = models.BooleanField(default=False, help_text="Whether this PDF was generated from mobile consultation")
     
     # Header and Footer used for this PDF
     header_image = models.ImageField(

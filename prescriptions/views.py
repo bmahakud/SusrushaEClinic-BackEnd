@@ -6,6 +6,8 @@ from django.db import models
 from django.utils import timezone
 from django.http import HttpResponse, Http404
 from django.conf import settings
+from django.core.files.storage import default_storage
+from django.core.files.base import ContentFile
 from drf_spectacular.utils import extend_schema, OpenApiParameter, OpenApiTypes
 from .models import Prescription, PrescriptionMedication, PrescriptionVitalSigns, PrescriptionPDF, InvestigationCategory, InvestigationTest, PrescriptionInvestigation
 from .serializers import (
@@ -971,6 +973,75 @@ class PrescriptionViewSet(viewsets.ModelViewSet):
         if today.month < date_of_birth.month or (today.month == date_of_birth.month and today.day < date_of_birth.day):
             age -= 1
         return str(age)
+
+    @action(detail=True, methods=['post'], url_path='generate-mobile-pdf')
+    def generate_mobile_pdf(self, request, pk=None):
+        """Generate PDF for mobile consultation with uploaded prescription image"""
+        prescription = self.get_object()
+        
+        # Check if prescription image is provided
+        if 'prescription_image' not in request.FILES:
+            return Response({
+                'success': False,
+                'error': {
+                    'code': 'MISSING_IMAGE',
+                    'message': 'Prescription image is required'
+                },
+                'timestamp': timezone.now().isoformat()
+            }, status=status.HTTP_400_BAD_REQUEST)
+        
+        try:
+            # Save the uploaded image
+            uploaded_file = request.FILES['prescription_image']
+            
+            # Create directory for prescription images
+            prescription_dir = f"prescriptions/images/{prescription.consultation_id}"
+            os.makedirs(os.path.join(settings.MEDIA_ROOT, prescription_dir), exist_ok=True)
+            
+            # Generate unique filename
+            timestamp = timezone.now().strftime("%Y%m%d_%H%M%S")
+            filename = f"mobile_prescription_{timestamp}_{uploaded_file.name}"
+            file_path = os.path.join(prescription_dir, filename)
+            
+            # Save the file
+            saved_path = default_storage.save(file_path, ContentFile(uploaded_file.read()))
+            
+            # Generate PDF with the uploaded image
+            pdf_path = generate_mobile_prescription_pdf(prescription, saved_path)
+            
+            # Create PDF record
+            pdf_record = PrescriptionPDF.objects.create(
+                prescription=prescription,
+                version_number=1,
+                pdf_file=pdf_path,
+                generated_by=request.user,
+                is_mobile_generated=True
+            )
+            
+            # Generate signed URL for download
+            download_url = generate_signed_url(pdf_path)
+            
+            return Response({
+                'success': True,
+                'data': {
+                    'pdf_id': pdf_record.id,
+                    'version': pdf_record.version_number,
+                    'download_url': download_url,
+                    'filename': f"mobile_prescription_{prescription.consultation_id}_v{pdf_record.version_number}.pdf"
+                },
+                'message': 'Mobile prescription PDF generated successfully',
+                'timestamp': timezone.now().isoformat()
+            }, status=status.HTTP_200_OK)
+            
+        except Exception as e:
+            return Response({
+                'success': False,
+                'error': {
+                    'code': 'PDF_GENERATION_ERROR',
+                    'message': f'Failed to generate PDF: {str(e)}'
+                },
+                'timestamp': timezone.now().isoformat()
+            }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
 
 class PrescriptionMedicationViewSet(viewsets.ModelViewSet):
     """ViewSet for prescription medications"""
