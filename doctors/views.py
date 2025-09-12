@@ -1618,12 +1618,14 @@ class PublicDoctorListView(APIView):
             
             if page is not None:
                 serializer = PublicDoctorListSerializer(page, many=True)
-                return paginator.get_paginated_response({
+                paginated_response = paginator.get_paginated_response(serializer.data)
+                # Add custom response structure to the paginated response
+                paginated_response.data.update({
                     'success': True,
-                    'data': serializer.data,
                     'message': 'Doctors retrieved successfully',
                     'timestamp': timezone.now().isoformat()
                 })
+                return paginated_response
             
             # If no pagination
             serializer = PublicDoctorListSerializer(queryset, many=True)
