@@ -1546,8 +1546,7 @@ class PublicDoctorListView(APIView):
             # Base queryset - only verified and active doctors
             queryset = DoctorProfile.objects.select_related('user').filter(
                 is_verified=True, 
-                is_active=True,
-                is_accepting_patients=True
+                is_active=True
             )
             
             # Apply filters
@@ -1618,14 +1617,12 @@ class PublicDoctorListView(APIView):
             
             if page is not None:
                 serializer = PublicDoctorListSerializer(page, many=True)
-                paginated_response = paginator.get_paginated_response(serializer.data)
-                # Add custom response structure to the paginated response
-                paginated_response.data.update({
+                return paginator.get_paginated_response({
                     'success': True,
+                    'data': serializer.data,
                     'message': 'Doctors retrieved successfully',
                     'timestamp': timezone.now().isoformat()
                 })
-                return paginated_response
             
             # If no pagination
             serializer = PublicDoctorListSerializer(queryset, many=True)
