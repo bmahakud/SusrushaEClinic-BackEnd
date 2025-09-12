@@ -11,6 +11,8 @@ from drf_spectacular.types import OpenApiTypes
 from datetime import datetime, timedelta
 from rest_framework.decorators import action, api_view, permission_classes
 from rest_framework.exceptions import PermissionDenied
+from django.views.decorators.csrf import csrf_exempt
+from django.utils.decorators import method_decorator
 
 from .models import Clinic
 from .serializers import ClinicSerializer, ClinicCreateSerializer
@@ -362,6 +364,155 @@ class GlobalMedicationViewSet(ModelViewSet):
                 },
                 'timestamp': timezone.now().isoformat()
             }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+    
+    @action(detail=False, methods=['post'], url_path='auto-create', permission_classes=[permissions.AllowAny])
+    def auto_create_medication(self, request):
+        """Auto-create medication in global catalog - public access for consultation workspace"""
+        try:
+            name = request.data.get('name', '').strip()
+            composition = request.data.get('composition', '').strip()
+            dosage_form = request.data.get('dosage_form', 'Tablet').strip()
+            
+            if not name:
+                return Response({
+                    'success': False,
+                    'error': {
+                        'code': 'MISSING_NAME',
+                        'message': 'Medication name is required'
+                    },
+                    'timestamp': timezone.now().isoformat()
+                }, status=status.HTTP_400_BAD_REQUEST)
+            
+            # Check if medication already exists
+            existing_medication = GlobalMedication.objects.filter(
+                name__iexact=name
+            ).first()
+            
+            if existing_medication:
+                return Response({
+                    'success': True,
+                    'data': {
+                        'medication': GlobalMedicationSerializer(existing_medication).data,
+                        'source': 'existing_database'
+                    },
+                    'message': f'Medication "{name}" already exists in database',
+                    'timestamp': timezone.now().isoformat()
+                }, status=status.HTTP_200_OK)
+            
+            # Create new medication
+            medication_data = {
+                'name': name,
+                'generic_name': name,  # Use name as generic name if not provided
+                'composition': composition or name,
+                'dosage_form': dosage_form,
+                'strength': 'As prescribed',  # Default strength
+                'medication_type': 'prescription',  # Default type
+                'therapeutic_class': 'General',  # Default class
+                'is_prescription_required': True,
+                'is_active': True,
+                'is_verified': False,  # Not verified since it's auto-created
+                'created_by': request.user if request.user.is_authenticated else None
+            }
+            
+            new_medication = GlobalMedication.objects.create(**medication_data)
+            
+            serializer = GlobalMedicationSerializer(new_medication)
+            
+            return Response({
+                'success': True,
+                'data': {
+                    'medication': serializer.data,
+                    'source': 'auto_created'
+                },
+                'message': f'Successfully created medication "{name}"',
+                'timestamp': timezone.now().isoformat()
+            }, status=status.HTTP_201_CREATED)
+            
+        except Exception as e:
+            return Response({
+                'success': False,
+                'error': {
+                    'code': 'CREATE_ERROR',
+                    'message': f'Error creating medication: {str(e)}'
+                },
+                'timestamp': timezone.now().isoformat()
+            }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+
+
+@csrf_exempt
+@api_view(['POST'])
+@permission_classes([])
+def public_auto_create_medication(request):
+    """Public auto-create medication endpoint - no authentication required"""
+    try:
+        name = request.data.get('name', '').strip()
+        composition = request.data.get('composition', '').strip()
+        dosage_form = request.data.get('dosage_form', 'Tablet').strip()
+        
+        if not name:
+            return Response({
+                'success': False,
+                'error': {
+                    'code': 'MISSING_NAME',
+                    'message': 'Medication name is required'
+                },
+                'timestamp': timezone.now().isoformat()
+            }, status=status.HTTP_400_BAD_REQUEST)
+        
+        # Check if medication already exists
+        existing_medication = GlobalMedication.objects.filter(
+            name__iexact=name
+        ).first()
+        
+        if existing_medication:
+            return Response({
+                'success': True,
+                'data': {
+                    'medication': GlobalMedicationSerializer(existing_medication).data,
+                    'source': 'existing_database'
+                },
+                'message': f'Medication "{name}" already exists in database',
+                'timestamp': timezone.now().isoformat()
+            }, status=status.HTTP_200_OK)
+        
+        # Create new medication
+        medication_data = {
+            'name': name,
+            'generic_name': name,  # Use name as generic name if not provided
+            'composition': composition or name,
+            'dosage_form': dosage_form,
+            'strength': 'As prescribed',  # Default strength
+            'medication_type': 'prescription',  # Default type
+            'therapeutic_class': 'General',  # Default class
+            'is_prescription_required': True,
+            'is_active': True,
+            'is_verified': False,  # Not verified since it's auto-created
+            'created_by': None  # No user for public creation
+        }
+        
+        new_medication = GlobalMedication.objects.create(**medication_data)
+        
+        serializer = GlobalMedicationSerializer(new_medication)
+        
+        return Response({
+            'success': True,
+            'data': {
+                'medication': serializer.data,
+                'source': 'auto_created'
+            },
+            'message': f'Successfully created medication "{name}"',
+            'timestamp': timezone.now().isoformat()
+        }, status=status.HTTP_201_CREATED)
+        
+    except Exception as e:
+        return Response({
+            'success': False,
+            'error': {
+                'code': 'CREATE_ERROR',
+                'message': f'Error creating medication: {str(e)}'
+            },
+            'timestamp': timezone.now().isoformat()
+        }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
 
 
 class ClinicInventoryViewSet(ModelViewSet):

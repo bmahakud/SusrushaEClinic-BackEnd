@@ -29,12 +29,16 @@ urlpatterns = [
         'get': 'search_medications'
     }), name='global-medication-search'),
     path('medications/public-search/', views.public_medication_search, name='public-medication-search'),
+    path('medications/public-auto-create/', views.public_auto_create_medication, name='public-medication-auto-create'),
     path('medications/bulk-create/', views.GlobalMedicationViewSet.as_view({
         'post': 'bulk_create_medications'
     }), name='global-medication-bulk-create'),
     path('medications/import-from-fda/', views.GlobalMedicationViewSet.as_view({
         'post': 'import_from_fda'
     }), name='global-medication-import-fda'),
+    path('medications/auto-create/', views.GlobalMedicationViewSet.as_view({
+        'post': 'auto_create_medication'
+    }), name='global-medication-auto-create'),
     
     # Clinic-specific nested resources
     path('<str:clinic_id>/services/', views.ClinicServiceViewSet.as_view({
