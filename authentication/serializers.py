@@ -232,7 +232,7 @@ class UpdateProfileSerializer(serializers.ModelSerializer):
     class Meta:
         model = User
         fields = [
-            'name', 'email', 'date_of_birth', 'gender', 'profile_picture',
+            'name', 'phone', 'email', 'date_of_birth', 'gender', 'profile_picture',
             'street', 'city', 'state', 'pincode', 'country',
             'emergency_contact_name', 'emergency_contact_phone', 'emergency_contact_relationship',
             'blood_group', 'allergies', 'medical_history'
