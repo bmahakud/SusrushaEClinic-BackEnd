@@ -387,11 +387,18 @@ class DoctorSlotViewSet(ModelViewSet):
         if doctor_id == 'current':
             doctor_id = self.request.user.id
         queryset = DoctorSlot.objects.filter(doctor_id=doctor_id)
-        # Optional: filter by month
-        month = self.request.query_params.get('month')
-        year = self.request.query_params.get('year')
-        if month and year:
-            queryset = queryset.filter(date__year=year, date__month=month)
+        
+        # Filter by specific date (highest priority)
+        date_param = self.request.query_params.get('date')
+        if date_param:
+            queryset = queryset.filter(date=date_param)
+        else:
+            # Optional: filter by month/year if no specific date
+            month = self.request.query_params.get('month')
+            year = self.request.query_params.get('year')
+            if month and year:
+                queryset = queryset.filter(date__year=year, date__month=month)
+        
         return queryset.order_by('date', 'start_time')
 
     def perform_create(self, serializer):

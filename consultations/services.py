@@ -872,37 +872,43 @@ class ConsultationAutoCompletionService:
             }
     
     @staticmethod
-    def get_overdue_consultations(hours_overdue=1, status_filter='both'):
+    def get_overdue_consultations(hours_overdue=0, status_filter='scheduled'):
         """
-        Get list of overdue consultations without updating them
+        Get list of overdue consultations - scheduled consultations that have passed their scheduled time
         
         Args:
-            hours_overdue (int): Number of hours after scheduled time to consider overdue
-            status_filter (str): Which status to check ('scheduled', 'in_progress', 'both')
+            hours_overdue (int): Additional hours buffer after scheduled time (default 0)
+            status_filter (str): Which status to check (default 'scheduled')
         
         Returns:
             list: List of overdue consultation details
         """
         try:
-            # Calculate the cutoff time
-            cutoff_time = timezone.now() - timedelta(hours=hours_overdue)
+            from django.utils import timezone
+            from django.db.models import Q
             
-            # Build the query
-            status_conditions = []
-            if status_filter in ['scheduled', 'both']:
-                status_conditions.append('scheduled')
-            if status_filter in ['in_progress', 'both']:
-                status_conditions.append('in_progress')
+            # Get current time
+            now = timezone.now()
             
-            if not status_conditions:
-                return []
+            # Calculate the cutoff time (scheduled time + buffer)
+            cutoff_time = now - timedelta(hours=hours_overdue)
             
-            # Find overdue consultations
+            # Find scheduled consultations that have passed their scheduled time
+            # Handle timezone properly - convert to local timezone for comparison
+            import pytz
+            local_tz = pytz.timezone('Asia/Kolkata')  # IST timezone
+            local_now = now.astimezone(local_tz)
+            
             overdue_consultations = Consultation.objects.filter(
-                status__in=status_conditions
+                status='scheduled'  # Only scheduled consultations can be overdue
+            ).filter(
+                Q(scheduled_date__lt=local_now.date()) |  # Past dates
+                Q(scheduled_date=local_now.date(), scheduled_time__lt=local_now.time())  # Today but past time
             ).select_related('patient', 'doctor')
             
-            # Filter by scheduled datetime
+            print(f'🔍 ConsultationService.get_overdue_consultations: Found {overdue_consultations.count()} overdue consultations')
+            
+            # Build the response list
             overdue_list = []
             for consultation in overdue_consultations:
                 # Create scheduled datetime

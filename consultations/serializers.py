@@ -63,8 +63,16 @@ class ConsultationCreateSerializer(serializers.ModelSerializer):
         # Set consultation data from slot
         validated_data['scheduled_date'] = slot.date
         validated_data['scheduled_time'] = slot.start_time
-        validated_data['duration'] = slot.clinic.consultation_duration
-        validated_data['clinic'] = slot.clinic
+        
+        # Handle clinic and duration - use fallback if clinic is None
+        if slot.clinic:
+            validated_data['duration'] = slot.clinic.consultation_duration
+            validated_data['clinic'] = slot.clinic
+        else:
+            # Fallback: use duration from request data or default to 30 minutes
+            if 'duration' not in validated_data or not validated_data['duration']:
+                validated_data['duration'] = 30  # Default 30 minutes
+            validated_data['clinic'] = None
         validated_data['status'] = 'scheduled'
         validated_data['payment_status'] = 'pending'
         

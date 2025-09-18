@@ -35,6 +35,11 @@ class ClinicPagination(PageNumberPagination):
     page_size_query_param = 'page_size'
     max_page_size = 100
 
+class MedicationPagination(PageNumberPagination):
+    page_size = 20
+    page_size_query_param = 'page_size'
+    max_page_size = 100
+
 class ClinicViewSet(ModelViewSet):
     queryset = Clinic.objects.all()
     permission_classes = [permissions.IsAuthenticated]
@@ -97,6 +102,11 @@ class GlobalMedicationViewSet(ModelViewSet):
     """ViewSet for global medication management (Super Admin only)"""
     permission_classes = [permissions.IsAuthenticated]
     serializer_class = GlobalMedicationSerializer
+    pagination_class = MedicationPagination
+    filter_backends = [DjangoFilterBackend, filters.SearchFilter, filters.OrderingFilter]
+    search_fields = ['name', 'generic_name', 'brand_name', 'composition', 'therapeutic_class']
+    ordering_fields = ['name', 'created_at', 'updated_at']
+    ordering = ['name']
     
     def get_queryset(self):
         """Get all global medications"""
@@ -119,6 +129,38 @@ class GlobalMedicationViewSet(ModelViewSet):
             return super().get_permissions()
         else:
             return [permissions.IsAuthenticated()]
+    
+    def list(self, request, *args, **kwargs):
+        """List medications with proper pagination"""
+        queryset = self.filter_queryset(self.get_queryset())
+        page = self.paginate_queryset(queryset)
+        
+        if page is not None:
+            serializer = self.get_serializer(page, many=True)
+            paginated_response = self.get_paginated_response(serializer.data)
+            
+            # Transform to expected format
+            return Response({
+                'success': True,
+                'data': paginated_response.data['results'],
+                'pagination': {
+                    'count': paginated_response.data['count'],
+                    'next': paginated_response.data['next'],
+                    'previous': paginated_response.data['previous'],
+                    'page_size': self.pagination_class.page_size,
+                    'total_pages': (paginated_response.data['count'] + self.pagination_class.page_size - 1) // self.pagination_class.page_size
+                },
+                'message': 'Medications retrieved successfully',
+                'timestamp': timezone.now().isoformat()
+            }, status=status.HTTP_200_OK)
+        
+        serializer = self.get_serializer(queryset, many=True)
+        return Response({
+            'success': True,
+            'data': serializer.data,
+            'message': 'Medications retrieved successfully',
+            'timestamp': timezone.now().isoformat()
+        }, status=status.HTTP_200_OK)
     
     @action(detail=False, methods=['get'], url_path='search')
     def search_medications(self, request):

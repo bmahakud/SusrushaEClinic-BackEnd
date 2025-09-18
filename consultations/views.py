@@ -320,7 +320,26 @@ class ConsultationViewSet(ModelViewSet):
         # Filter by status
         status_filter = request.query_params.get('status')
         if status_filter:
-            queryset = queryset.filter(status=status_filter)
+            if status_filter == 'overdue':
+                # For overdue filter, find consultations that are past their scheduled time
+                # regardless of their static status
+                from datetime import datetime
+                now = timezone.now()
+                
+                # Get scheduled consultations that have passed their scheduled time (overdue)
+                # Need to handle timezone properly - convert to local timezone for comparison
+                import pytz
+                local_tz = pytz.timezone('Asia/Kolkata')  # IST timezone
+                local_now = now.astimezone(local_tz)
+                
+                queryset = queryset.filter(
+                    status='scheduled'  # Only scheduled consultations can be overdue
+                ).filter(
+                    Q(scheduled_date__lt=local_now.date()) |
+                    Q(scheduled_date=local_now.date(), scheduled_time__lt=local_now.time())
+                )
+            else:
+                queryset = queryset.filter(status=status_filter)
         
         # Filter by payment status
         payment_status_filter = request.query_params.get('payment_status')
@@ -1186,6 +1205,86 @@ class ConsultationSearchView(APIView):
             'message': 'Search results retrieved successfully',
             'timestamp': timezone.now().isoformat()
         }, status=status.HTTP_200_OK)
+
+
+class OverdueConsultationsView(APIView):
+    """Get overdue consultations with proper e-clinic filtering"""
+    permission_classes = [permissions.IsAuthenticated]
+    
+    def get(self, request):
+        """Get overdue consultations based on user role and e-clinic assignment"""
+        try:
+            user = request.user
+            now = timezone.now()
+            
+            # Base query for overdue consultations (scheduled consultations that have passed their time)
+            # Handle timezone properly - convert to local timezone for comparison
+            import pytz
+            local_tz = pytz.timezone('Asia/Kolkata')  # IST timezone
+            local_now = now.astimezone(local_tz)
+            
+            overdue_queryset = Consultation.objects.filter(
+                status='scheduled'  # Only scheduled consultations can be overdue
+            ).filter(
+                Q(scheduled_date__lt=local_now.date()) |
+                Q(scheduled_date=local_now.date(), scheduled_time__lt=local_now.time())
+            ).select_related('patient', 'doctor', 'clinic')
+            
+            print(f'🔍 Checking for overdue consultations at {now} (date: {now.date()}, time: {now.time()})')
+            print(f'🔍 Base overdue query found: {overdue_queryset.count()} consultations')
+            
+            # Apply role-based filtering
+            if user.role == 'doctor':
+                # Doctors see only their own overdue consultations
+                overdue_queryset = overdue_queryset.filter(doctor=user)
+            elif user.role == 'admin':
+                # Admins see consultations from their assigned e-clinic + consultations with no clinic
+                try:
+                    # Use the same logic as the main consultation filtering
+                    assigned_clinic = getattr(user, 'administered_clinic', None)
+                    if assigned_clinic:
+                        # Admin assigned to a clinic - see clinic consultations + unassigned consultations
+                        overdue_queryset = overdue_queryset.filter(
+                            Q(clinic=assigned_clinic) | Q(clinic__isnull=True)
+                        )
+                        print(f'🔍 Admin {user.id} assigned to clinic {assigned_clinic.name}')
+                    else:
+                        # Admin with no clinic assignment sees all consultations (fallback)
+                        print(f'🔍 Admin {user.id} has no clinic assignment - showing all overdue')
+                        pass  # No additional filtering
+                except AttributeError as e:
+                    print(f'🔍 Admin {user.id} clinic access error: {e} - showing all overdue')
+                    # Fallback: show all overdue consultations
+                    pass
+            elif user.role == 'superadmin':
+                # Superadmins see all overdue consultations
+                pass  # No additional filtering needed
+            else:
+                # Other roles see no overdue consultations
+                overdue_queryset = overdue_queryset.none()
+            
+            # Serialize the results
+            serializer = ConsultationListSerializer(overdue_queryset, many=True)
+            
+            return Response({
+                'success': True,
+                'data': serializer.data,
+                'count': overdue_queryset.count(),
+                'message': f'Found {overdue_queryset.count()} overdue consultations',
+                'timestamp': timezone.now().isoformat()
+            }, status=status.HTTP_200_OK)
+            
+        except Exception as e:
+            print(f'Error in OverdueConsultationsView: {e}')
+            return Response({
+                'success': False,
+                'error': {
+                    'code': 'OVERDUE_FETCH_ERROR',
+                    'message': 'Failed to fetch overdue consultations',
+                    'details': str(e)
+                },
+                'timestamp': timezone.now().isoformat()
+            }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
 
 
 class ConsultationStatsView(APIView):
@@ -2510,6 +2609,8 @@ class DoctorConsultationViewSet(ModelViewSet):
             # Get overdue consultations using the service
             from .services import ConsultationAutoCompletionService
             overdue_consultations = ConsultationAutoCompletionService.get_overdue_consultations()
+            print(f'🔍 Overdue endpoint called by user: {request.user.role} ({request.user.id})')
+            print(f'🔍 Found {len(overdue_consultations)} overdue consultations from service')
             
             # Filter based on user role (since service returns list of dicts, we filter after)
             user = request.user
@@ -2528,12 +2629,17 @@ class DoctorConsultationViewSet(ModelViewSet):
                             filtered_consultations.append(consultation_data)
                     elif user.role == 'admin':
                         # Admins can see overdue consultations for their assigned clinic
+                        # AND consultations without clinic assignment
                         try:
-                            assigned_clinic = user.administered_clinic
+                            assigned_clinic = getattr(user, 'administered_clinic', None)
                             if assigned_clinic and consultation.clinic == assigned_clinic:
+                                # Consultation belongs to admin's clinic
+                                filtered_consultations.append(consultation_data)
+                            elif not consultation.clinic:
+                                # Consultation has no clinic assignment - admin can see it
                                 filtered_consultations.append(consultation_data)
                             elif not assigned_clinic:
-                                # Admin without clinic assignment can see all
+                                # Admin has no clinic assignment - can see all
                                 filtered_consultations.append(consultation_data)
                         except AttributeError:
                             # Admin without clinic assignment can see all

@@ -19,6 +19,9 @@ urlpatterns = [
     path('search/', views.ConsultationSearchView.as_view(), name='consultation-search'),
     path('stats/', views.ConsultationStatsView.as_view(), name='consultation-stats'),
     
+    # Overdue consultations endpoint
+    path('overdue/', views.OverdueConsultationsView.as_view(), name='overdue-consultations'),
+    
     # Consultation-specific nested resources
     path('<str:consultation_id>/diagnosis/', 
          views.ConsultationDiagnosisViewSet.as_view({'get': 'list', 'post': 'create'}), 
