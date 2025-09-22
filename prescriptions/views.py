@@ -9,13 +9,13 @@ from django.conf import settings
 from django.core.files.storage import default_storage
 from django.core.files.base import ContentFile
 from drf_spectacular.utils import extend_schema, OpenApiParameter, OpenApiTypes
-from .models import Prescription, PrescriptionMedication, PrescriptionVitalSigns, PrescriptionPDF, InvestigationCategory, InvestigationTest, PrescriptionInvestigation
+from .models import Prescription, PrescriptionMedication, PrescriptionVitalSigns, PrescriptionPDF, InvestigationCategory, InvestigationTest, PrescriptionInvestigation, PrescriptionImage
 from .serializers import (
     PrescriptionSerializer, PrescriptionCreateSerializer, PrescriptionUpdateSerializer,
     PrescriptionListSerializer, PrescriptionDetailSerializer, PrescriptionMedicationSerializer,
     PrescriptionVitalSignsSerializer, InvestigationCategorySerializer, InvestigationTestSerializer, PrescriptionInvestigationSerializer
 )
-from .enhanced_pdf_generator import generate_prescription_pdf
+from .enhanced_pdf_generator import generate_prescription_pdf, generate_mobile_prescription_pdf
 from utils.signed_urls import generate_signed_url
 import os
 
@@ -991,35 +991,22 @@ class PrescriptionViewSet(viewsets.ModelViewSet):
             }, status=status.HTTP_400_BAD_REQUEST)
         
         try:
-            # Save the uploaded image
+            # Save the uploaded image using PrescriptionImage model
             uploaded_file = request.FILES['prescription_image']
             
-            # Create directory for prescription images
-            prescription_dir = f"prescriptions/images/{prescription.consultation_id}"
-            os.makedirs(os.path.join(settings.MEDIA_ROOT, prescription_dir), exist_ok=True)
-            
-            # Generate unique filename
-            timestamp = timezone.now().strftime("%Y%m%d_%H%M%S")
-            filename = f"mobile_prescription_{timestamp}_{uploaded_file.name}"
-            file_path = os.path.join(prescription_dir, filename)
-            
-            # Save the file
-            saved_path = default_storage.save(file_path, ContentFile(uploaded_file.read()))
-            
-            # Generate PDF with the uploaded image
-            pdf_path = generate_mobile_prescription_pdf(prescription, saved_path)
-            
-            # Create PDF record
-            pdf_record = PrescriptionPDF.objects.create(
+            # Create PrescriptionImage instance
+            prescription_image = PrescriptionImage.objects.create(
                 prescription=prescription,
-                version_number=1,
-                pdf_file=pdf_path,
-                generated_by=request.user,
-                is_mobile_generated=True
+                image_file=uploaded_file,
+                uploaded_by=request.user,
+                is_mobile_upload=True
             )
             
+            # Generate PDF with the uploaded image
+            pdf_record = generate_mobile_prescription_pdf(prescription, prescription_image)
+            
             # Generate signed URL for download
-            download_url = generate_signed_url(pdf_path)
+            download_url = generate_signed_url(pdf_record.pdf_file.name)
             
             return Response({
                 'success': True,

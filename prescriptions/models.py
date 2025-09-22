@@ -385,3 +385,32 @@ class PrescriptionInvestigation(models.Model):
         return f"{self.test.name} for {self.prescription}"
 
 
+class PrescriptionImage(models.Model):
+    """Model to store prescription images uploaded from mobile"""
+    
+    prescription = models.ForeignKey(
+        Prescription,
+        on_delete=models.CASCADE,
+        related_name='prescription_images'
+    )
+    image_file = models.ImageField(
+        upload_to='prescriptions/images/',
+        help_text="Prescription image uploaded from mobile"
+    )
+    uploaded_by = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.CASCADE,
+        related_name='uploaded_prescription_images'
+    )
+    uploaded_at = models.DateTimeField(auto_now_add=True)
+    is_mobile_upload = models.BooleanField(default=True)
+    
+    class Meta:
+        verbose_name = 'Prescription Image'
+        verbose_name_plural = 'Prescription Images'
+        ordering = ['-uploaded_at']
+    
+    def __str__(self):
+        return f"Image for {self.prescription} uploaded by {self.uploaded_by}"
+
+

@@ -144,57 +144,14 @@ class WPDFGenerator:
         self.c.rect(0, self.height - header_height, self.width, header_height, fill=True, stroke=False)
         self.c.setFillColor(colors.black)
 
-        # Left side - Only clinic info, no logo
-        logo_x = 40
-        logo_y = self.height - 70
-        # Removed logo from left side - only show clinic info
-
-        # Clinic info (left, under logo)
-        clinic_y = self.height - 30
+        # Left side - Doctor info only
+        left_x = 40
+        left_y = self.height - 30
         self.c.setFont("Helvetica-Bold", 12)
         self.c.setFillColor(colors.black)
-        clinic_name = getattr(getattr(self.prescription.consultation, 'clinic', None), 'name', 'Online Healthcare Platform')
-        self.c.drawString(logo_x, clinic_y, clinic_name)
-        self.c.setFont("Helvetica", 9)
-        clinic_addr = getattr(getattr(self.prescription.consultation, 'clinic', None), 'street', '')
-        if clinic_addr:
-            self.c.drawString(logo_x, clinic_y - 12, clinic_addr)
-        clinic_phone = getattr(getattr(self.prescription.consultation, 'clinic', None), 'phone', '')
-        if clinic_phone:
-            self.c.drawString(logo_x, clinic_y - 24, f"Phone: {clinic_phone}")
-
-        # Center: Larger logo positioned lower
-        center_logo_x = self.width / 2 - 100  # Center the logo
-        center_logo_y = self.height - 80  # Moved lower
-        center_logo_width = 200  # Increased size
-        center_logo_height = 80  # Increased size
-        
-        # Try to use the new logo in the center
-        new_logo_path = "/home/tushar/Videos/sushrusa_backend/media_cdn/clinic_logos/sushrusa_logo_WB.png"
-        if os.path.exists(new_logo_path):
-            try:
-                center_logo = ImageReader(new_logo_path)
-                self.c.drawImage(center_logo, center_logo_x, center_logo_y, width=center_logo_width, height=center_logo_height, preserveAspectRatio=True, mask='auto')
-                print(f"✅ Using new logo in center: {new_logo_path}")
-            except Exception as e:
-                print(f"Center logo image error: {e}")
-                # Fallback to text if logo fails
-                self.c.setFont("Helvetica-Bold", 18)
-                self.c.setFillColor(colors.HexColor("#E17726"))  # Orange theme color
-                self.c.drawCentredString(self.width / 2, self.height - 40, "E-PRESCRIPTION")
-        else:
-            # Fallback to text if logo doesn't exist
-            self.c.setFont("Helvetica-Bold", 18)
-            self.c.setFillColor(colors.HexColor("#E17726"))  # Orange theme color
-            self.c.drawCentredString(self.width / 2, self.height - 40, "E-PRESCRIPTION")
-        self.c.setFillColor(colors.black)
-
-        # Right: Doctor info (removed registration number)
-        right_x = self.width - 220
-        right_y = self.height - 30
-        self.c.setFont("Helvetica-Bold", 12)
         doctor_name = getattr(self.prescription.doctor, 'name', 'Doctor')
-        self.c.drawRightString(self.width - 40, right_y, f"Dr. {doctor_name}")
+        self.c.drawString(left_x, left_y, f"Dr. {doctor_name}")
+        
         # Dynamic doctor details under name
         try:
             doctor_profile = self.prescription.doctor.doctor_profile
@@ -205,252 +162,283 @@ class WPDFGenerator:
             qualifications = getattr(self.prescription.doctor, 'qualifications', '')
             specialization = getattr(self.prescription.doctor, 'specialization', '')
             license_number = getattr(self.prescription.doctor, 'registration_number', '')
+        
         self.c.setFont("Helvetica", 10)
+        # Add doctor qualification, specialization and license number
         if qualifications:
-            self.c.drawRightString(self.width - 40, right_y - 14, qualifications)
-        if specialization or license_number:
-            self.c.drawRightString(self.width - 40, right_y - 28, f"{specialization} | {license_number}".strip().strip('| ').strip())
-        # Prescribed date
-        try:
-            prescribed_line = f"Prescribed on {self.prescription.issued_date.strftime('%d/%m/%Y')}"
-            self.c.drawRightString(self.width - 40, right_y - 42, prescribed_line)
-        except Exception:
-            pass
+            self.c.drawString(left_x, left_y - 14, qualifications)
+        if specialization:
+            self.c.drawString(left_x, left_y - 28, specialization)
+        if license_number:
+            self.c.drawString(left_x, left_y - 42, license_number)
 
-        # Underline below header
-        self.c.setStrokeColor(colors.HexColor("#E17726"))  # Orange theme color
-        self.c.setLineWidth(2)
-        self.c.line(30, self.height - header_height, self.width - 30, self.height - header_height)
-        self.c.setLineWidth(1)
+        # Center: Sushrusa logo
+        center_x = self.width / 2
+        center_y = self.height - 50
+        
+        # Try multiple logo paths
+        logo_paths = [
+            "/home/tushar/Videos/sushrusa_backend/media_cdn/clinic_logos/sushrusa_logo_WB.png",
+            "/home/tushar/Videos/sushrusa_backend/prescription_headers/test_prescription_header.png",
+            "/home/tushar/Videos/sushrusa_backend/media/clinic_logos/sushrusa_logo_WB.png"
+        ]
+        
+        logo_displayed = False
+        for logo_path in logo_paths:
+            if os.path.exists(logo_path):
+                try:
+                    center_logo = ImageReader(logo_path)
+                    # Increased logo size for better visibility
+                    logo_width = 160
+                    logo_height = 80
+                    logo_x = center_x - (logo_width / 2)
+                    logo_y = center_y - (logo_height / 2)
+                    self.c.drawImage(center_logo, logo_x, logo_y, width=logo_width, height=logo_height, preserveAspectRatio=True, mask='auto')
+                    print(f"✅ Using logo in center: {logo_path}")
+                    logo_displayed = True
+                    break
+                except Exception as e:
+                    print(f"Center logo image error for {logo_path}: {e}")
+                    continue
+        
+        if not logo_displayed:
+            # Create professional text logo as fallback - increased size
+            self.c.setFillColor(colors.HexColor("#E17726"))  # Orange theme color
+            self.c.setFont("Helvetica-Bold", 24)
+            self.c.drawCentredString(center_x, center_y + 15, "SUSHRUSA")
+            self.c.setFont("Helvetica-Bold", 14)
+            self.c.drawCentredString(center_x, center_y - 5, "eCLINIC")
+            self.c.setFont("Helvetica", 11)
+            self.c.drawCentredString(center_x, center_y - 25, "Healthcare Platform")
+        
+        self.c.setFillColor(colors.black)
+
+        # Right side: Sushrusa eCLINIC text and address
+        right_x = self.width - 40
+        right_y = self.height - 30
+        self.c.setFont("Helvetica", 9)
+        self.c.setFillColor(colors.black)
+        
+        # Add Sushrusa eCLINIC text above address
+        self.c.setFont("Helvetica-Bold", 11)
+        self.c.setFillColor(colors.HexColor("#E17726"))  # Orange theme color
+        self.c.drawRightString(right_x, right_y, "Sushrusa eCLINIC")
+        
+        # Show address and contact info
+        self.c.setFont("Helvetica", 9)
+        self.c.setFillColor(colors.black)
+        address_lines = [
+            "HIG 11, AINIGIA HB COLONY",
+            "PHASE 2, KHANDAGIRI",
+            "BHUBANESWAR, PIN: 751030",
+            "MOB: 6370511060"
+        ]
+        
+        for i, line in enumerate(address_lines):
+            self.c.drawRightString(right_x, right_y - 15 - (i * 12), line)
+
+        # No underline below header - cleaner design
 
     def _draw_appointment_details(self):
         y_pos = self.height - 130 # Starting position after header
         self.c.setFillColor(self.heading_color)
-        self.c.setFont("Helvetica-Bold", 10)
+        self.c.setFont("Helvetica-Bold", 10)  # Slightly increased font size
         self.c.drawString(30, y_pos, "PATIENT DETAILS")
-        self.c.setStrokeColor(self.line_color)
-        self.c.line(30, y_pos - 5, self.width - 30, y_pos - 5)
 
-        y_pos -= 20
+        y_pos -= 18
         self.c.setFillColor(colors.black)
-        self.c.setFont("Helvetica", 9)
+        self.c.setFont("Helvetica", 9)  # Slightly increased font size for better readability
         
-        # FIXED: Add proper labels with colons
-        # Patient information with labels
+        # Formatted patient information with proper labels in single line
         patient_age = self._calculate_age(getattr(self.prescription.patient, 'date_of_birth', None))
         patient_sex = getattr(self.prescription.patient, 'gender', 'N/A')
-        patient_sex_short = 'MALE' if patient_sex == 'Male' else 'FEMALE' if patient_sex == 'Female' else 'N/A'
+        patient_id = f"P{str(self.prescription.patient.id).zfill(4)}"
         
-        self.c.drawString(30, y_pos, f"Patient Name: {self.prescription.patient.name} | {patient_sex_short} | {patient_age} yrs")
-        self.c.drawString(self.width / 2 + 20, y_pos, f"Consult Date: {self.prescription.issued_date.strftime('%d/%m/%Y')} at {self.prescription.issued_time.strftime('%I:%M %p')}")
-
-        y_pos -= 15
-        # Removed email, keeping only mobile number
-        patient_mobile = getattr(self.prescription.patient, 'mobile', '+918976358976')
-        self.c.drawString(30, y_pos, f"Contact: {patient_mobile}")
-        
-        # Dynamic consultation type
-        consultation_type = "Online"
-        if hasattr(self.prescription, 'consultation') and self.prescription.consultation:
-            consultation_type = self.prescription.consultation.get_consultation_type_display()
-        self.c.drawString(self.width / 2 + 20, y_pos, f"Consult Type: {consultation_type}")
-
-        y_pos -= 15
-        # Dynamic UHID (using patient ID or mobile)
-        uhid = getattr(self.prescription.patient, 'uhid', f"UHID{self.prescription.patient.id}")
-        self.c.drawString(30, y_pos, f"UHID: {uhid}")
-
-        y_pos -= 15
-        # Dynamic appointment ID (using prescription ID)
-        self.c.drawString(30, y_pos, f"Appt ID: {self.prescription.id}")
-
-        self.c.setStrokeColor(self.line_color)
-        self.c.line(30, y_pos - 10, self.width - 30, y_pos - 10)
+        # Single line with labeled patient info
+        patient_info = f"Patient Name: {self.prescription.patient.name} | Age: {patient_age} years | Sex: {patient_sex} | Date: {self.prescription.issued_date.strftime('%d/%m/%Y')} {self.prescription.issued_time.strftime('%H:%M')} | Patient ID: {patient_id}"
+        self.c.drawString(30, y_pos, patient_info)
 
     def _draw_vital_signs(self):
-        y_pos = self.height - 220 # Equal spacing from appointment details
+        y_pos = self.height - 170 # Reduced spacing from appointment details
         self.c.setFillColor(self.heading_color)
-        self.c.setFont("Helvetica-Bold", 10)
+        self.c.setFont("Helvetica-Bold", 10)  # Slightly increased font size
         self.c.drawString(30, y_pos, "VITAL SIGNS")
-        self.c.setStrokeColor(self.line_color)
-        self.c.line(30, y_pos - 5, self.width - 30, y_pos - 5)
 
-        y_pos -= 20
+        y_pos -= 18
         self.c.setFillColor(colors.black)
-        self.c.setFont("Helvetica", 9)
+        self.c.setFont("Helvetica", 8)  # Slightly increased font size for better readability
         
-        # Collect all vital signs data
-        vitals_data = []
+        # Collect only essential vital signs: Pulse rate, BP, height, weight
+        vitals_parts = []
         
         # From prescription model
         if self.prescription.pulse:
-            vitals_data.append(f"Pulse: {self.prescription.pulse} bpm")
+            vitals_parts.append(f"Pulse: {self.prescription.pulse}bpm")
         if self.prescription.blood_pressure_systolic and self.prescription.blood_pressure_diastolic:
-            vitals_data.append(f"Blood Pressure: {self.prescription.blood_pressure_systolic}/{self.prescription.blood_pressure_diastolic} mmHg")
-        if self.prescription.temperature:
-            vitals_data.append(f"Temperature: {self.prescription.temperature}°C")
+            vitals_parts.append(f"BP: {self.prescription.blood_pressure_systolic}/{self.prescription.blood_pressure_diastolic}mmHg")
         if self.prescription.weight:
-            vitals_data.append(f"Weight: {self.prescription.weight} kg")
+            vitals_parts.append(f"Wt: {self.prescription.weight}kg")
         if self.prescription.height:
-            vitals_data.append(f"Height: {self.prescription.height} cm")
+            vitals_parts.append(f"Ht: {self.prescription.height}cm")
         
-        # From consultation vital signs if available
+        # From consultation vital signs if available and not already added
         if hasattr(self.prescription, 'consultation') and self.prescription.consultation and hasattr(self.prescription.consultation, 'vital_signs'):
             consultation_vitals = self.prescription.consultation.vital_signs
             if consultation_vitals:
-                if consultation_vitals.heart_rate and not any('Pulse' in v for v in vitals_data):
-                    vitals_data.append(f"Pulse: {consultation_vitals.heart_rate} bpm")
-                if consultation_vitals.blood_pressure_systolic and consultation_vitals.blood_pressure_diastolic and not any('Blood Pressure' in v for v in vitals_data):
-                    vitals_data.append(f"Blood Pressure: {consultation_vitals.blood_pressure_systolic}/{consultation_vitals.blood_pressure_diastolic} mmHg")
-                if consultation_vitals.temperature and not any('Temperature' in v for v in vitals_data):
-                    vitals_data.append(f"Temperature: {consultation_vitals.temperature}°C")
-                if consultation_vitals.weight and not any('Weight' in v for v in vitals_data):
-                    vitals_data.append(f"Weight: {consultation_vitals.weight} kg")
-                if consultation_vitals.height and not any('Height' in v for v in vitals_data):
-                    vitals_data.append(f"Height: {consultation_vitals.height} cm")
-                if consultation_vitals.bmi:
-                    vitals_data.append(f"BMI: {consultation_vitals.bmi}")
-                if consultation_vitals.respiratory_rate:
-                    vitals_data.append(f"Respiratory Rate: {consultation_vitals.respiratory_rate} /min")
-                if consultation_vitals.oxygen_saturation:
-                    vitals_data.append(f"Oxygen Saturation: {consultation_vitals.oxygen_saturation}%")
-                if consultation_vitals.blood_glucose:
-                    vitals_data.append(f"Blood Glucose: {consultation_vitals.blood_glucose} mg/dL")
+                if consultation_vitals.heart_rate and not any('Pulse' in v for v in vitals_parts):
+                    vitals_parts.append(f"Pulse: {consultation_vitals.heart_rate}bpm")
+                if consultation_vitals.blood_pressure_systolic and consultation_vitals.blood_pressure_diastolic and not any('BP' in v for v in vitals_parts):
+                    vitals_parts.append(f"BP: {consultation_vitals.blood_pressure_systolic}/{consultation_vitals.blood_pressure_diastolic}mmHg")
+                if consultation_vitals.weight and not any('Wt' in v for v in vitals_parts):
+                    vitals_parts.append(f"Wt: {consultation_vitals.weight}kg")
+                if consultation_vitals.height and not any('Ht' in v for v in vitals_parts):
+                    vitals_parts.append(f"Ht: {consultation_vitals.height}cm")
         
-        # Display vital signs in two columns
-        if vitals_data:
-            left_column = vitals_data[:len(vitals_data)//2 + len(vitals_data)%2]
-            right_column = vitals_data[len(vitals_data)//2 + len(vitals_data)%2:]
-            
-            for i, vital in enumerate(left_column):
-                self.c.drawString(30, y_pos, vital)
-                if i < len(right_column):
-                    self.c.drawString(self.width / 2 + 20, y_pos, right_column[i])
-                y_pos -= 15
+        # Display all vital signs in one line with separators
+        if vitals_parts:
+            vitals_line = " | ".join(vitals_parts)
+            self.c.drawString(30, y_pos, vitals_line)
         else:
             self.c.drawString(30, y_pos, "No vital signs recorded")
 
-        self.c.setStrokeColor(self.line_color)
-        self.c.line(30, y_pos - 10, self.width - 30, y_pos - 10)
-
     def _draw_patient_history(self):
         """Draw patient medical history section"""
-        y_pos = self.height - 310 # Equal spacing from vital signs
+        y_pos = self.height - 210 # Reduced spacing from vital signs
         self.c.setFillColor(self.heading_color)
-        self.c.setFont("Helvetica-Bold", 12)
+        self.c.setFont("Helvetica-Bold", 9)  # Slightly increased font size
         self.c.drawString(30, y_pos, "PATIENT MEDICAL HISTORY")
-        self.c.setStrokeColor(self.line_color)
-        self.c.line(30, y_pos - 5, self.width - 30, y_pos - 5)
-        y_pos -= 20
+        y_pos -= 15  # Reduced spacing
         
         self.c.setFillColor(colors.black)
-        self.c.setFont("Helvetica", 10)
+        self.c.setFont("Helvetica", 8)  # Slightly increased font size
         if self.prescription.patient_previous_history:
-            self.c.drawString(30, y_pos, f"Previous Medical History: {self.prescription.patient_previous_history}")
+            # Truncate long history to fit in smaller space
+            history_text = self.prescription.patient_previous_history[:120] + "..." if len(self.prescription.patient_previous_history) > 120 else self.prescription.patient_previous_history
+            self.c.drawString(30, y_pos, history_text)
         else:
             self.c.drawString(30, y_pos, "No previous medical history recorded")
-        y_pos -= 15
-        
-        self.c.setStrokeColor(self.line_color)
-        self.c.line(30, y_pos - 10, self.width - 30, y_pos - 10)
+        y_pos -= 12  # Reduced spacing
         return y_pos
 
     def _draw_diagnosis(self):
-        y_pos = self.height - 380 # Equal spacing from patient history
+        y_pos = self.height - 250 # Reduced spacing from patient history
         self.c.setFillColor(self.heading_color)
-        self.c.setFont("Helvetica-Bold", 12)
-        self.c.drawString(30, y_pos, "DIAGNOSIS / PROVISIONAL DIAGNOSIS")
-        self.c.setStrokeColor(self.line_color)
-        self.c.line(30, y_pos - 5, self.width - 30, y_pos - 5)
+        self.c.setFont("Helvetica-Bold", 9)  # Slightly increased font size
+        self.c.drawString(30, y_pos, "DIAGNOSIS")
 
-        y_pos -= 20
+        y_pos -= 15  # Reduced spacing
         self.c.setFillColor(colors.black)
-        self.c.setFont("Helvetica", 10)
+        self.c.setFont("Helvetica", 8)  # Slightly increased font size
         
-        # Enhanced diagnosis display with separate sections
-        diagnosis_sections = []
+        # Compact diagnosis display
+        diagnosis_parts = []
         
         # Primary Diagnosis
         if self.prescription.primary_diagnosis:
-            diagnosis_sections.append(f"Primary Diagnosis: {self.prescription.primary_diagnosis}")
+            diagnosis_parts.append(self.prescription.primary_diagnosis)
         
         # Clinical Classification
         if self.prescription.clinical_classification:
-            diagnosis_sections.append(f"Clinical Classification: {self.prescription.clinical_classification}")
+            diagnosis_parts.append(self.prescription.clinical_classification)
         
-        # Display diagnosis sections
-        if diagnosis_sections:
-            for diagnosis in diagnosis_sections:
-                self.c.drawString(30, y_pos, diagnosis)
-                y_pos -= 15
+        # Display diagnosis in one line if possible
+        if diagnosis_parts:
+            diagnosis_text = " | ".join(diagnosis_parts)
+            # Truncate if too long
+            if len(diagnosis_text) > 100:
+                diagnosis_text = diagnosis_text[:97] + "..."
+            self.c.drawString(30, y_pos, diagnosis_text)
         else:
             self.c.drawString(30, y_pos, "No diagnosis recorded")
-
-        self.c.setStrokeColor(self.line_color)
-        self.c.line(30, y_pos - 10, self.width - 30, y_pos - 10)
+        return y_pos - 20
 
     def _draw_medication(self):
-        y_pos = self.height - 490 # Equal spacing from diagnosis
+        y_pos = self.height - 290 # Reduced spacing from diagnosis
+        
+        # Draw Rx symbol and heading
         self.c.setFillColor(self.heading_color)
-        self.c.setFont("Helvetica-Bold", 12)
-        self.c.drawString(30, y_pos, "MEDICATIONS")
-        self.c.setStrokeColor(self.line_color)
-        self.c.line(30, y_pos - 5, self.width - 30, y_pos - 5)
-        y_pos -= 25
-
-        # Table headers
-        headers = ["Name", "Strength", "Dosage", "Frequency", "Duration", "Instructions"]
-        col_widths = [110, 70, 60, 70, 60, 140]
-        x_positions = [30]
-        for w in col_widths[:-1]:
-            x_positions.append(x_positions[-1] + w)
-
-        self.c.setFillColor(colors.HexColor("#f5f5f5"))
-        self.c.rect(30, y_pos - 5, sum(col_widths), 20, fill=True, stroke=False)
-        self.c.setFillColor(self.heading_color)
-        self.c.setFont("Helvetica-Bold", 10)
-        for i, header in enumerate(headers):
-            self.c.drawString(x_positions[i] + 2, y_pos + 8, header)
+        self.c.setFont("Helvetica-Bold", 14)  # Larger font for Rx
+        self.c.drawString(30, y_pos, "Rx")
+        self.c.setFont("Helvetica-Bold", 9)  # Slightly increased font size for medications
+        self.c.drawString(60, y_pos, "MEDICATIONS")
+        
         y_pos -= 20
 
-        # Medications rows
+        # Medications in tabular format without borders
         medications = self.prescription.medications.all().order_by('order')
+        print(f"🔍 PDF Generator - Total medications found: {medications.count()}")
+        for i, med in enumerate(medications):
+            print(f"🔍 Medication {i+1}: {med.medicine_name} (ID: {med.id}, Order: {med.order})")
+        
         if medications.exists():
-            for idx, med in enumerate(medications):
-                # Alternate row color
-                if idx % 2 == 0:
-                    self.c.setFillColor(colors.whitesmoke)
-                else:
-                    self.c.setFillColor(colors.HexColor("#e9f0fb"))
-                self.c.rect(30, y_pos - 2, sum(col_widths), 18, fill=True, stroke=False)
-                self.c.setFillColor(colors.black)
-                self.c.setFont("Helvetica", 9)
-                values = [
-                    med.medicine_name or '',
-                    med.composition or '',
-                    f"{med.morning_dose}-{med.afternoon_dose}-{med.evening_dose}",
-                    med.get_frequency_display() if hasattr(med, 'get_frequency_display') else med.frequency,
-                    f"{med.duration_days or ''}d {med.duration_weeks or ''}w {med.duration_months or ''}m",
-                    med.special_instructions or med.notes or ''
-                ]
-                for i, value in enumerate(values):
-                    self.c.drawString(x_positions[i] + 2, y_pos + 4, str(value)[:22])
-                y_pos -= 18
-                if y_pos < 120:
+            # Table header
+            self.c.setFillColor(self.heading_color)
+            self.c.setFont("Helvetica-Bold", 8)
+            
+            # Column positions
+            col1_x = 40  # Medicine Name
+            col2_x = 200 # Dosage
+            col3_x = 280 # Frequency
+            col4_x = 360 # Duration
+            
+            # Draw header row
+            self.c.drawString(col1_x, y_pos, "Medicine Name")
+            self.c.drawString(col2_x, y_pos, "Dosage")
+            self.c.drawString(col3_x, y_pos, "Frequency")
+            self.c.drawString(col4_x, y_pos, "Duration")
+            
+            y_pos -= 15
+            
+            # Draw medication rows
+            self.c.setFillColor(colors.black)
+            self.c.setFont("Helvetica", 8)
+            
+            for idx, med in enumerate(medications, 1):
+                # Medicine name (truncated if too long)
+                medicine_name = f"{idx}. {med.medicine_name or 'Medicine'}"
+                if len(medicine_name) > 20:
+                    medicine_name = medicine_name[:17] + "..."
+                
+                # Dosage format
+                dosage = f"{med.morning_dose}-{med.afternoon_dose}-{med.evening_dose}"
+                
+                # Duration formatting
+                duration = ""
+                if med.duration_days:
+                    duration = f"{med.duration_days} days"
+                elif med.duration_weeks:
+                    duration = f"{med.duration_weeks} weeks"
+                elif med.duration_months:
+                    duration = f"{med.duration_months} months"
+                elif med.is_continuous:
+                    duration = "Continuous"
+                
+                # Frequency
+                frequency = med.get_frequency_display() if hasattr(med, 'get_frequency_display') else (med.frequency or "")
+                if len(frequency) > 15:
+                    frequency = frequency[:12] + "..."
+                
+                # Draw row data
+                self.c.drawString(col1_x, y_pos, medicine_name)
+                self.c.drawString(col2_x, y_pos, dosage)
+                self.c.drawString(col3_x, y_pos, frequency)
+                self.c.drawString(col4_x, y_pos, duration)
+                
+                y_pos -= 12
+                
+                # Check for page break
+                if y_pos < 150:
                     self.c.showPage()
                     self._draw_header()
                     y_pos = self.height - 120
         else:
             self.c.setFillColor(colors.black)
-            self.c.setFont("Helvetica", 9)
-            self.c.drawString(30, y_pos, "No medications prescribed")
+            self.c.setFont("Helvetica", 8)
+            self.c.drawString(40, y_pos, "No medications prescribed")
             y_pos -= 15
 
-        self.c.setStrokeColor(self.line_color)
-        self.c.line(30, y_pos - 10, self.width - 30, y_pos - 10)
-        
-        # Draw investigation tests first
-        y_pos = self._draw_investigation_tests(y_pos - 20)
+        # Draw investigation tests inline
+        y_pos = self._draw_investigation_tests_inline(y_pos - 10)
         
         # Then draw advice and instructions
         self._draw_advice_instructions(y_pos)
@@ -462,7 +450,7 @@ class WPDFGenerator:
         
         self.c.setFillColor(colors.black)
         self.c.setFont("Helvetica", 9)
-        self.c.drawString(self.width - 200, signature_y, f"Prescribed on {self.prescription.issued_date.strftime('%d/%m/%Y')}")
+        # Removed "Prescribed on" text as requested
         
         # Get doctor profile information
         try:
@@ -471,8 +459,7 @@ class WPDFGenerator:
             doctor_specialization = getattr(doctor_profile, 'specialization', 'Family Physician')
             license_number = getattr(doctor_profile, 'license_number', 'Reg.No. TSMC/FMR/15345')
             
-            self.c.drawString(self.width - 200, signature_y - 15, doctor_qualifications)
-            self.c.drawString(self.width - 200, signature_y - 30, f"{doctor_specialization} | {license_number}")
+            # Removed qualifications and license number text as requested - showing only signature
             
             # Draw doctor's signature image if available
             if doctor_profile.signature:
@@ -527,9 +514,7 @@ class WPDFGenerator:
             
         except Exception as e:
             print(f"Error accessing doctor profile: {e}")
-            # Fallback to basic signature
-            self.c.drawString(self.width - 200, signature_y - 30, "MBBS")
-            self.c.drawString(self.width - 200, signature_y - 45, "Family Physician | Reg.No. TSMC/FMR/15345")
+            # Fallback to basic signature - showing only signature without qualifications/license
             
             # Add signature line
             self.c.setFont("Helvetica-Bold", 12)
@@ -544,9 +529,9 @@ class WPDFGenerator:
         
         self.c.setFillColor(colors.black)
         self.c.setFont("Helvetica", 9)
-        self.c.drawString(self.width - 200, signature_y, f"Prescribed on {self.prescription.issued_date.strftime('%d/%m/%Y')} by")
+        # Removed "Prescribed on" text as requested
         self.c.setFont("Helvetica-Bold", 10)
-        self.c.drawString(self.width - 200, signature_y - 15, f"Dr. {self.prescription.doctor.name}")
+        self.c.drawString(self.width - 200, signature_y, f"Dr. {self.prescription.doctor.name}")
         self.c.setFont("Helvetica", 9)
         
         # Get doctor profile information
@@ -556,8 +541,7 @@ class WPDFGenerator:
             doctor_specialization = getattr(doctor_profile, 'specialization', 'Family Physician')
             license_number = getattr(doctor_profile, 'license_number', 'Reg.No. TSMC/FMR/15345')
             
-            self.c.drawString(self.width - 200, signature_y - 30, doctor_qualifications)
-            self.c.drawString(self.width - 200, signature_y - 45, f"{doctor_specialization} | {license_number}")
+            # Removed qualifications and license number text as requested - showing only signature
             
             # Draw doctor's signature image if available
             if doctor_profile.signature:
@@ -612,9 +596,7 @@ class WPDFGenerator:
             
         except Exception as e:
             print(f"Error accessing doctor profile: {e}")
-            # Fallback to basic signature
-            self.c.drawString(self.width - 200, signature_y - 30, "MBBS")
-            self.c.drawString(self.width - 200, signature_y - 45, "Family Physician | Reg.No. TSMC/FMR/15345")
+            # Fallback to basic signature - showing only signature without qualifications/license
             
             # Add signature line
             self.c.setFont("Helvetica-Bold", 12)
@@ -627,9 +609,9 @@ class WPDFGenerator:
     def _draw_advice_instructions(self, start_y_pos=None):
         # FIXED: Check if we need a page break before drawing advice
         if start_y_pos is None:
-            y_pos = self.height - 580 # Equal spacing from medications (calculated dynamically)
+            y_pos = self.height - 620 # Increased margin top for better spacing
         else:
-            y_pos = start_y_pos
+            y_pos = start_y_pos - 40  # Add extra margin top
         
         # If we're too close to bottom, start new page
         if y_pos < 200:
@@ -640,8 +622,6 @@ class WPDFGenerator:
         self.c.setFillColor(self.heading_color)
         self.c.setFont("Helvetica-Bold", 10)
         self.c.drawString(30, y_pos, "ADVICE/ INSTRUCTIONS")
-        self.c.setStrokeColor(self.line_color)
-        self.c.line(30, y_pos - 5, self.width - 30, y_pos - 5)
 
         # Enhanced advice and instructions display
         y_pos -= 20
@@ -682,72 +662,64 @@ class WPDFGenerator:
             self.c.drawString(30, y_pos, "General Instructions: Take regular medication as prescribed")
             y_pos -= 15
 
-        self.c.setStrokeColor(self.line_color)
-        self.c.line(30, y_pos - 10, self.width - 30, y_pos - 10)
-
-    def _draw_investigation_tests(self, start_y_pos=None):
-        """Draw investigation tests section"""
+    def _draw_investigation_tests_inline(self, start_y_pos=None):
+        """Draw investigation tests section inline with medications"""
         if start_y_pos is None:
             y_pos = self.height - 580
         else:
             y_pos = start_y_pos
         
         # If we're too close to bottom, start new page
-        if y_pos < 200:
+        if y_pos < 150:
             self.c.showPage()
             self._draw_header()  # Redraw header on new page
-            y_pos = self.height - 200  # Reset position for new page
+            y_pos = self.height - 120  # Reset position for new page
         
         # Get investigation tests for this prescription
         try:
             investigations = self.prescription.investigations.all().order_by('order')
+            print(f"🔍 PDF Generator - Total investigations found: {investigations.count()}")
+            for i, inv in enumerate(investigations):
+                print(f"🔍 Investigation {i+1}: {inv.test.name} (ID: {inv.id}, Order: {inv.order})")
+            
             if investigations.exists():
                 self.c.setFillColor(self.heading_color)
-                self.c.setFont("Helvetica-Bold", 10)
-                self.c.drawString(30, y_pos, "INVESTIGATION TESTS")
-                self.c.setStrokeColor(self.line_color)
-                self.c.line(30, y_pos - 5, self.width - 30, y_pos - 5)
+                self.c.setFont("Helvetica-Bold", 9)  # Slightly increased font size
+                self.c.drawString(30, y_pos, "TEST PRESCRIBED")
                 
-                y_pos -= 35  # Increased margin from 20 to 35 for even better spacing
+                y_pos -= 15
                 self.c.setFillColor(colors.black)
-                self.c.setFont("Helvetica", 9)
+                self.c.setFont("Helvetica", 8)  # Slightly increased font size for better readability
                 
-                # Draw investigation tests in a table format
-                for idx, investigation in enumerate(investigations):
-                    # Alternate row color
-                    if idx % 2 == 0:
-                        self.c.setFillColor(colors.whitesmoke)
-                    else:
-                        self.c.setFillColor(colors.HexColor("#e9f0fb"))
-                    
-                    # Draw row background
-                    row_height = 25
-                    self.c.rect(30, y_pos - 2, self.width - 60, row_height, fill=True, stroke=False)
-                    self.c.setFillColor(colors.black)
-                    
-                    # Test name and category
+                # Draw investigation tests in compact format
+                for idx, investigation in enumerate(investigations, 1):
                     test_name = investigation.test.name
                     category_name = investigation.test.category.name
                     priority = investigation.priority.upper()
                     
-                    # Draw test information
-                    self.c.setFont("Helvetica-Bold", 9)
-                    self.c.drawString(35, y_pos + 15, f"{test_name}")
-                    self.c.setFont("Helvetica", 8)
-                    self.c.drawString(35, y_pos + 5, f"Category: {category_name}")
+                    # Compact format: "T1. Test Name (Category) - Priority" to distinguish from medications
+                    test_line = f"T{idx}. {test_name} ({category_name})"
+                    if priority != 'ROUTINE':
+                        test_line += f" - {priority}"
                     
-                    # Priority and cost
-                    self.c.setFont("Helvetica-Bold", 8)
-                    self.c.drawString(self.width - 200, y_pos + 15, f"Priority: {priority}")
-                    if investigation.test.estimated_cost:
-                        self.c.drawString(self.width - 200, y_pos + 5, f"Cost: ₹{investigation.test.estimated_cost}")
+                    # Truncate if too long
+                    if len(test_line) > 80:
+                        test_line = test_line[:77] + "..."
                     
-                    # Special instructions if any
+                    self.c.drawString(40, y_pos, test_line)
+                    
+                    # Special instructions on same line if short, otherwise next line
                     if investigation.special_instructions:
-                        self.c.setFont("Helvetica", 8)
-                        self.c.drawString(35, y_pos - 5, f"Instructions: {investigation.special_instructions}")
+                        if len(investigation.special_instructions) < 40:
+                            instruction_text = f" | {investigation.special_instructions}"
+                            # Check if it fits on the same line
+                            if len(test_line + instruction_text) <= 120:
+                                self.c.drawString(40 + len(test_line) * 4, y_pos, instruction_text)
+                            else:
+                                y_pos -= 8
+                                self.c.drawString(50, y_pos, f"Instructions: {investigation.special_instructions[:60]}")
                     
-                    y_pos -= (row_height + 5)
+                    y_pos -= 10
                     
                     # Check if we need a page break
                     if y_pos < 120:
@@ -755,13 +727,12 @@ class WPDFGenerator:
                         self._draw_header()
                         y_pos = self.height - 120
                 
-                # Add line after investigations
-                self.c.setStrokeColor(self.line_color)
-                self.c.line(30, y_pos - 10, self.width - 30, y_pos - 10)
+                # Next Visit section removed - already shown in ADVICE/INSTRUCTIONS
                 
-                return y_pos - 20  # Return the new y position
+                return y_pos  # Return the new y position
             else:
-                return start_y_pos  # No investigations, return original position
+                # Next Visit section removed - already shown in ADVICE/INSTRUCTIONS
+                return y_pos - 20  # Return original position
                 
         except Exception as e:
             print(f"Error drawing investigation tests: {e}")
@@ -779,8 +750,8 @@ class WPDFGenerator:
         self._draw_appointment_details()
         self._draw_vital_signs()
         self._draw_patient_history()
-        self._draw_diagnosis()
-        self._draw_medication()
+        diagnosis_y = self._draw_diagnosis()
+        self._draw_medication()  # This now includes tests and next visit inline
         
         # Add footer and signature on same page
         self._draw_footer(1, 1)
@@ -985,50 +956,160 @@ def create_test_logo():
         return None
 
 
-def generate_mobile_prescription_pdf(prescription, uploaded_image_path):
+def generate_mobile_prescription_pdf(prescription, prescription_image):
     """
-    Generate a mobile prescription PDF with uploaded image at the bottom of vital signs
+    Generate a mobile prescription PDF with uploaded image displayed from vital signs to doctor signature
     """
     try:
-        # Create PDF generator instance
-        generator = WPDFGenerator(prescription, "mobile_prescription.pdf")
-        
-        # Generate the base PDF with all sections except the image
-        pdf_path = generator.generate_pdf()
-        
-        # Now we need to add the uploaded image to the PDF
-        # For now, we'll use the existing PDF generation and modify it to include the image
-        # This is a simplified approach - in production, you might want to use a more sophisticated PDF manipulation library
-        
-        # Create a new PDF with the image
-        from reportlab.pdfgen import canvas
-        from reportlab.lib.pagesizes import A4
-        from reportlab.lib.utils import ImageReader
-        from django.conf import settings
-        import os
-        
-        # Create output path
-        output_dir = os.path.join(settings.MEDIA_ROOT, "prescriptions", "pdfs", prescription.consultation_id)
-        os.makedirs(output_dir, exist_ok=True)
-        
-        timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-        output_filename = f"mobile_prescription_{timestamp}.pdf"
-        output_path = os.path.join(output_dir, output_filename)
-        
-        # Create new PDF with image
-        c = canvas.Canvas(output_path, pagesize=A4)
-        width, height = A4
-        
-        # Draw the prescription content (simplified version for mobile)
-        _draw_mobile_prescription_content(c, prescription, uploaded_image_path, width, height)
-        
-        c.save()
-        
-        return output_path
+        # Create a custom PDF generator for mobile with image
+        generator = MobilePDFGenerator(prescription, prescription_image)
+        return generator.generate_and_save()
         
     except Exception as e:
         print(f"Error generating mobile PDF: {e}")
         raise e
+
+
+class MobilePDFGenerator(WPDFGenerator):
+    """Mobile PDF Generator that includes uploaded image in the prescription"""
+    
+    def __init__(self, prescription, prescription_image):
+        super().__init__(prescription, "mobile_prescription.pdf")
+        self.prescription_image = prescription_image
+    
+    def _draw_mobile_image_section(self, start_y, end_y):
+        """Draw the uploaded image section for mobile prescriptions, extending from start_y to within 20px of end_y"""
+        try:
+            # Check if image exists and is accessible
+            if not self.prescription_image or not self.prescription_image.image_file:
+                print(f"Prescription image not found or not accessible")
+                return end_y
+            
+            # Load and draw the image using the file object
+            from reportlab.lib.utils import ImageReader
+            from django.core.files.base import ContentFile
+            
+            # Read the image file content
+            image_file = self.prescription_image.image_file
+            image_content = image_file.read()
+            
+            # Reset file pointer
+            image_file.seek(0)
+            
+            # Create ImageReader from file content
+            img = ImageReader(ContentFile(image_content))
+            
+            # Calculate available space for image
+            available_height = start_y - end_y  # Space from start_y to end_y
+            available_width = 500  # Max width to fit page
+            
+            # Get original image dimensions
+            original_width, original_height = img.getSize()
+            
+            # Calculate scaling to fit available space while maintaining aspect ratio
+            width_ratio = available_width / original_width
+            height_ratio = available_height / original_height
+            
+            # Use the smaller ratio to ensure image fits in both dimensions
+            scale_ratio = min(width_ratio, height_ratio)
+            
+            # Calculate final dimensions
+            img_width = original_width * scale_ratio
+            img_height = original_height * scale_ratio
+            
+            print(f"🔍 Mobile PDF Generator - Original: {original_width}x{original_height}")
+            print(f"🔍 Mobile PDF Generator - Available space: {available_width}x{available_height}")
+            print(f"🔍 Mobile PDF Generator - Final dimensions: {img_width}x{img_height}")
+            
+            # Center the image horizontally
+            img_x = (self.width - img_width) / 2
+            
+            # Position image at start_y and extend down
+            img_y = start_y - img_height
+            
+            # Draw image
+            self.c.drawImage(img, img_x, img_y, width=img_width, height=img_height)
+            
+            # Return the bottom position of the image
+            return img_y
+            
+        except Exception as e:
+            print(f"Error drawing mobile image: {e}")
+            return end_y
+    
+    def generate_pdf(self):
+        """Generate simplified mobile PDF with just header, patient details, vital signs, and uploaded image"""
+        print(f"🔍 Mobile PDF Generator - Creating simplified mobile PDF for prescription {self.prescription.id}")
+        print(f"🔍 Mobile PDF Generator - Image: {self.prescription_image.image_file.name if self.prescription_image else 'None'}")
+        
+        # Draw only essential sections for mobile
+        self._draw_header()
+        self._draw_appointment_details()
+        self._draw_vital_signs()
+        
+        # Calculate position for image: after vital signs with 20px gap
+        # Vital signs end at y_pos around 282 (height - 170 - 18 - vital signs height)
+        # Add 20px gap after vital signs
+        image_start_y = self.height - 170 - 18 - 15 - 20  # 20px gap after vital signs
+        
+        # Calculate available space for image (extend to within 20px of doctor signature)
+        # Doctor signature is at y=150, so image should end at y=150+20+signature_height = ~230
+        image_end_y = 150 + 20 + 80  # 20px gap + signature height (~80px)
+        
+        print(f"🔍 Mobile PDF Generator - Image start y: {image_start_y}, end y: {image_end_y}")
+        
+        # Draw the uploaded image with calculated space
+        final_y_pos = self._draw_mobile_image_section(image_start_y, image_end_y)
+        
+        # Draw doctor signature at the bottom
+        self._draw_doctor_signature()
+        
+        # Add minimal footer
+        self._draw_footer(1, 1)
+        
+        self.c.save()
+        
+        # Clean up temporary files
+        self._cleanup_temp_files()
+        
+        # Get the PDF data from buffer
+        pdf_data = self.buffer.getvalue()
+        self.buffer.close()
+        
+        print(f"🔍 Mobile PDF Generator - PDF generated successfully, size: {len(pdf_data)} bytes")
+        return pdf_data
+    
+    def generate_and_save(self):
+        """Generate PDF and save to PrescriptionPDF model"""
+        from .models import PrescriptionPDF
+        from django.contrib.auth import get_user_model
+        
+        # Generate PDF
+        pdf_data = self.generate_pdf()
+        
+        # Calculate checksum
+        checksum = hashlib.md5(pdf_data).hexdigest()
+        
+        # Create PrescriptionPDF instance
+        pdf_instance = PrescriptionPDF(
+            prescription=self.prescription,
+            generated_by=self.prescription.doctor,  # Use the prescription doctor
+            file_size=len(pdf_data),
+            checksum=checksum,
+            is_mobile_generated=True
+        )
+        
+        # Save the PDF file
+        filename = f"mobile_prescription_{self.prescription.id}_v{pdf_instance.version_number or 1}.pdf"
+        pdf_instance.pdf_file.save(
+            filename,
+            BytesIO(pdf_data),
+            save=False
+        )
+        
+        pdf_instance.save()
+        
+        return pdf_instance
 
 
 def _draw_mobile_prescription_content(canvas, prescription, image_path, width, height):

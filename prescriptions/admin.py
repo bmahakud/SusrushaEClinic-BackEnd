@@ -1,5 +1,5 @@
 from django.contrib import admin
-from .models import Prescription, PrescriptionMedication, PrescriptionVitalSigns, PrescriptionPDF, InvestigationCategory, InvestigationTest, PrescriptionInvestigation
+from .models import Prescription, PrescriptionMedication, PrescriptionVitalSigns, PrescriptionPDF, InvestigationCategory, InvestigationTest, PrescriptionInvestigation, PrescriptionImage
 
 
 class PrescriptionMedicationInline(admin.TabularInline):
@@ -195,3 +195,13 @@ class PrescriptionInvestigationAdmin(admin.ModelAdmin):
     search_fields = ['prescription__id', 'test__name']
     ordering = ['prescription', 'order']
     autocomplete_fields = ['prescription', 'test']
+
+
+@admin.register(PrescriptionImage)
+class PrescriptionImageAdmin(admin.ModelAdmin):
+    list_display = ['prescription', 'uploaded_by', 'uploaded_at', 'is_mobile_upload']
+    list_filter = ['is_mobile_upload', 'uploaded_at']
+    search_fields = ['prescription__id', 'uploaded_by__username']
+    ordering = ['-uploaded_at']
+    readonly_fields = ['uploaded_at']
+    autocomplete_fields = ['prescription', 'uploaded_by']
