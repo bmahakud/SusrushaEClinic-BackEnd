@@ -274,16 +274,22 @@ class ConsultationViewSet(ModelViewSet):
         try:
             consultation = self.get_object()
             
-            # Check if consultation can be deleted (e.g., not completed or in progress)
-            if consultation.status in ['completed', 'in-progress']:
+            # Check if consultation can be deleted
+            # Only prevent deletion of consultations that are currently in progress
+            if consultation.status in ['in_progress', 'ready_for_consultation']:
                 return Response({
                     'success': False,
                     'error': {
                         'code': 'CANNOT_DELETE',
-                        'message': f'Cannot delete consultation with status: {consultation.status}'
+                        'message': f'Cannot delete consultation that is currently in progress or ready for consultation. Status: {consultation.status}'
                     },
                     'timestamp': timezone.now().isoformat()
                 }, status=status.HTTP_400_BAD_REQUEST)
+            
+            # For completed consultations, add a warning but allow deletion
+            if consultation.status == 'completed':
+                # Log the deletion for audit purposes
+                print(f"Warning: Deleting completed consultation {consultation.id} by user {request.user.id}")
             
             consultation.delete()
             return Response({
