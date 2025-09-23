@@ -329,6 +329,9 @@ class ConsultationViewSet(ModelViewSet):
             OpenApiParameter('status', OpenApiTypes.STR, description='Filter by status'),
             OpenApiParameter('payment_status', OpenApiTypes.STR, description='Filter by payment status'),
             OpenApiParameter('clinic_id', OpenApiTypes.STR, description='Filter by clinic ID'),
+            OpenApiParameter('doctor_id', OpenApiTypes.STR, description='Filter by doctor ID'),
+            OpenApiParameter('start_date', OpenApiTypes.DATE, description='Filter consultations from this date (YYYY-MM-DD)'),
+            OpenApiParameter('end_date', OpenApiTypes.DATE, description='Filter consultations until this date (YYYY-MM-DD)'),
         ],
         responses={200: ConsultationListSerializer(many=True)},
         description="List all consultations with pagination and filtering"
@@ -341,6 +344,31 @@ class ConsultationViewSet(ModelViewSet):
         clinic_id = request.query_params.get('clinic_id')
         if clinic_id and request.user.role in ['superadmin', 'admin']:
             queryset = queryset.filter(clinic_id=clinic_id)
+        
+        # Filter by doctor_id (for superadmin and admin users)
+        doctor_id = request.query_params.get('doctor_id')
+        if doctor_id and request.user.role in ['superadmin', 'admin']:
+            queryset = queryset.filter(doctor_id=doctor_id)
+        
+        # Filter by date range
+        start_date = request.query_params.get('start_date')
+        end_date = request.query_params.get('end_date')
+        
+        if start_date:
+            try:
+                from datetime import datetime
+                start_date_obj = datetime.strptime(start_date, '%Y-%m-%d').date()
+                queryset = queryset.filter(scheduled_date__gte=start_date_obj)
+            except ValueError:
+                pass  # Invalid date format, ignore filter
+        
+        if end_date:
+            try:
+                from datetime import datetime
+                end_date_obj = datetime.strptime(end_date, '%Y-%m-%d').date()
+                queryset = queryset.filter(scheduled_date__lte=end_date_obj)
+            except ValueError:
+                pass  # Invalid date format, ignore filter
         
         # Filter upcoming consultations
         upcoming_only = request.query_params.get('upcoming', '').lower() == 'true'
