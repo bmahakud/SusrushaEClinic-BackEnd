@@ -269,6 +269,39 @@ class ConsultationViewSet(ModelViewSet):
         
         return queryset.none()
     
+    def destroy(self, request, pk=None):
+        """Delete consultation"""
+        try:
+            consultation = self.get_object()
+            
+            # Check if consultation can be deleted (e.g., not completed or in progress)
+            if consultation.status in ['completed', 'in-progress']:
+                return Response({
+                    'success': False,
+                    'error': {
+                        'code': 'CANNOT_DELETE',
+                        'message': f'Cannot delete consultation with status: {consultation.status}'
+                    },
+                    'timestamp': timezone.now().isoformat()
+                }, status=status.HTTP_400_BAD_REQUEST)
+            
+            consultation.delete()
+            return Response({
+                'success': True,
+                'message': 'Consultation deleted successfully',
+                'timestamp': timezone.now().isoformat()
+            }, status=status.HTTP_204_NO_CONTENT)
+            
+        except Exception as e:
+            return Response({
+                'success': False,
+                'error': {
+                    'code': 'DELETE_ERROR',
+                    'message': str(e)
+                },
+                'timestamp': timezone.now().isoformat()
+            }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+    
     @extend_schema(
         responses={200: ConsultationSerializer},
         description="Get consultation by ID"
