@@ -383,10 +383,30 @@ class DoctorSlotViewSet(ModelViewSet):
 
     def get_queryset(self):
         doctor_id = self.kwargs.get('doctor_id')
+        user = self.request.user
+        
+        # Handle admin access - if admin is trying to access their own ID, return empty queryset
+        # or allow them to access all slots (depending on business logic)
+        if user.role == 'admin' and doctor_id == user.id:
+            # Admin trying to access their own ID - this should probably be handled differently
+            # For now, return empty queryset with a helpful message
+            return DoctorSlot.objects.none()
+        
         # Handle 'current' doctor_id for self-reference
         if doctor_id == 'current':
             doctor_id = self.request.user.id
-        queryset = DoctorSlot.objects.filter(doctor_id=doctor_id)
+        
+        # For admins and superadmins, allow access to any doctor's slots
+        if user.role in ['admin', 'superadmin']:
+            # If doctor_id is provided and it's a valid doctor, filter by that doctor
+            if doctor_id and doctor_id.startswith('DOC'):
+                queryset = DoctorSlot.objects.filter(doctor_id=doctor_id)
+            else:
+                # If no valid doctor_id provided, return all slots (for admin overview)
+                queryset = DoctorSlot.objects.all()
+        else:
+            # For doctors, only allow access to their own slots
+            queryset = DoctorSlot.objects.filter(doctor_id=doctor_id)
         
         # Filter by specific date (highest priority)
         date_param = self.request.query_params.get('date')
@@ -400,6 +420,40 @@ class DoctorSlotViewSet(ModelViewSet):
                 queryset = queryset.filter(date__year=year, date__month=month)
         
         return queryset.order_by('date', 'start_time')
+
+    def list(self, request, *args, **kwargs):
+        """Override list method to handle admin access to their own ID"""
+        user = request.user
+        doctor_id = self.kwargs.get('doctor_id')
+        
+        # If admin is trying to access their own ID, return all doctor slots
+        if user.role == 'admin' and doctor_id == user.id:
+            # Get all doctor slots for admin overview
+            queryset = DoctorSlot.objects.all()
+            
+            # Apply filters
+            date_param = request.query_params.get('date')
+            if date_param:
+                queryset = queryset.filter(date=date_param)
+            else:
+                month = request.query_params.get('month')
+                year = request.query_params.get('year')
+                if month and year:
+                    queryset = queryset.filter(date__year=year, date__month=month)
+            
+            queryset = queryset.order_by('date', 'start_time')
+            
+            # Serialize and return
+            serializer = self.get_serializer(queryset, many=True)
+            return Response({
+                'success': True,
+                'data': serializer.data,
+                'message': f'All doctor slots retrieved for admin {user.name}',
+                'timestamp': timezone.now().isoformat()
+            })
+        
+        # Use default list behavior for other cases
+        return super().list(request, *args, **kwargs)
 
     def perform_create(self, serializer):
         doctor_id = self.kwargs.get('doctor_id')
@@ -1646,6 +1700,54 @@ class PublicDoctorListView(APIView):
                 'error': {
                     'code': 'FETCH_ERROR',
                     'message': f'Failed to fetch doctors: {str(e)}'
+                },
+                'timestamp': timezone.now().isoformat()
+            }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+
+
+class AdminSlotsView(APIView):
+    """View for admins to access all doctor slots"""
+    permission_classes = [IsAdminOrSuperAdmin]
+    
+    def get(self, request):
+        """Get all doctor slots with optional filtering"""
+        try:
+            # Get all doctor slots
+            queryset = DoctorSlot.objects.select_related('doctor').all()
+            
+            # Apply filters
+            date_param = request.query_params.get('date')
+            month = request.query_params.get('month')
+            year = request.query_params.get('year')
+            doctor_id = request.query_params.get('doctor_id')
+            
+            if date_param:
+                queryset = queryset.filter(date=date_param)
+            elif month and year:
+                queryset = queryset.filter(date__year=year, date__month=month)
+            
+            if doctor_id:
+                queryset = queryset.filter(doctor_id=doctor_id)
+            
+            # Order by date and start time
+            queryset = queryset.order_by('date', 'start_time')
+            
+            # Serialize the data
+            serializer = DoctorSlotSerializer(queryset, many=True)
+            
+            return Response({
+                'success': True,
+                'data': serializer.data,
+                'message': f'All doctor slots retrieved for admin {request.user.name}',
+                'timestamp': timezone.now().isoformat()
+            })
+            
+        except Exception as e:
+            return Response({
+                'success': False,
+                'error': {
+                    'code': 'FETCH_ERROR',
+                    'message': f'Failed to fetch doctor slots: {str(e)}'
                 },
                 'timestamp': timezone.now().isoformat()
             }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)

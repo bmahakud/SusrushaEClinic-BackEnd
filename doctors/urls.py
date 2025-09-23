@@ -1,7 +1,7 @@
 from django.urls import path, include
 from rest_framework.routers import DefaultRouter
 from . import views
-from .views import DoctorSlotViewSet, SuperAdminDoctorManagementView, SuperAdminDoctorDetailView, DoctorStatusListView, DoctorStatusStatsView, DoctorStatusUpdateView, DoctorStatusDetailView, DoctorStatusOfflineView
+from .views import DoctorSlotViewSet, SuperAdminDoctorManagementView, SuperAdminDoctorDetailView, DoctorStatusListView, DoctorStatusStatsView, DoctorStatusUpdateView, DoctorStatusDetailView, DoctorStatusOfflineView, AdminSlotsView
 
 app_name = 'doctors'
 
@@ -31,6 +31,9 @@ urlpatterns = [
     # Doctor search and statistics
     path('search/', views.DoctorSearchView.as_view(), name='doctor-search'),
     path('stats/', views.DoctorStatsView.as_view(), name='doctor-stats'),
+    
+    # Admin slots management
+    path('admin/slots/', AdminSlotsView.as_view(), name='admin-slots'),
     
     # Doctor-specific nested resources
     path('<str:doctor_id>/education/', 
