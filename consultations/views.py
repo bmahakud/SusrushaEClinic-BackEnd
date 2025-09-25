@@ -1171,8 +1171,27 @@ class SuperAdminConsultationManagementView(APIView):
                         'timestamp': timezone.now().isoformat()
                     }, status=status.HTTP_400_BAD_REQUEST)
             
-            # Apply ordering
-            queryset = queryset.order_by(ordering)
+            # Apply ordering - split comma-separated ordering fields
+            if ordering:
+                ordering_fields = [field.strip() for field in ordering.split(',')]
+                # Validate ordering fields
+                valid_fields = ['scheduled_date', 'scheduled_time', 'created_at', 'updated_at', 'status', 'payment_status', 'consultation_fee']
+                for field in ordering_fields:
+                    # Remove the '-' prefix for validation
+                    clean_field = field.lstrip('-')
+                    if clean_field not in valid_fields:
+                        return Response({
+                            'success': False,
+                            'error': {
+                                'code': 'INVALID_ORDERING_FIELD',
+                                'message': f'Invalid ordering field: {clean_field}. Valid fields are: {", ".join(valid_fields)}'
+                            },
+                            'timestamp': timezone.now().isoformat()
+                        }, status=status.HTTP_400_BAD_REQUEST)
+                
+                queryset = queryset.order_by(*ordering_fields)
+            else:
+                queryset = queryset.order_by('-scheduled_date', '-scheduled_time')
             
             # Calculate pagination
             total_count = queryset.count()
