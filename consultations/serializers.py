@@ -501,6 +501,8 @@ class ConsultationListSerializer(serializers.ModelSerializer):
     """Serializer for consultation list view"""
     patient_name = serializers.CharField(source='patient.name', read_only=True)
     doctor_name = serializers.CharField(source='doctor.name', read_only=True)
+    clinic_name = serializers.CharField(source='clinic.name', read_only=True)
+    clinic_id = serializers.CharField(source='clinic.id', read_only=True)
     doctor_meeting_link = serializers.SerializerMethodField(read_only=True)
     is_overdue = serializers.SerializerMethodField()
     hours_overdue = serializers.SerializerMethodField()
@@ -509,7 +511,7 @@ class ConsultationListSerializer(serializers.ModelSerializer):
     class Meta:
         model = Consultation
         fields = [
-            'id', 'patient', 'doctor', 'patient_name', 'doctor_name',
+            'id', 'patient', 'doctor', 'clinic', 'patient_name', 'doctor_name', 'clinic_name', 'clinic_id',
             'consultation_type', 'scheduled_date', 'scheduled_time', 'duration',
             'status', 'payment_status', 'consultation_fee', 'is_paid', 'created_at',
             'doctor_meeting_link', 'is_overdue', 'hours_overdue', 'reschedule_status',
