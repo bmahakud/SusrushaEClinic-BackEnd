@@ -1109,9 +1109,11 @@ class SuperAdminConsultationManagementView(APIView):
             queryset = Consultation.objects.select_related(
                 'patient', 'doctor', 'clinic'
             ).prefetch_related(
-                'consultationdiagnosis_set',
-                'consultationvitalsigns_set',
-                'consultationattachment_set'
+                'diagnoses',
+                'vital_signs',
+                'attachments',
+                'notes',
+                'recorded_symptoms'
             )
             
             # Apply search filter
