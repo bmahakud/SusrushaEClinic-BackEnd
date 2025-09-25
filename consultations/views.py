@@ -12,6 +12,7 @@ from drf_spectacular.utils import extend_schema, OpenApiParameter
 from drf_spectacular.openapi import OpenApiTypes
 from datetime import datetime, timedelta
 from django.core.exceptions import ValidationError
+from django_filters.rest_framework import DjangoFilterBackend
 
 from authentication.models import User
 from .models import (
@@ -1064,6 +1065,152 @@ class ConsultationViewSet(ModelViewSet):
                 'error': {
                     'code': 'RECEIPT_GENERATION_ERROR',
                     'message': f'Error generating receipt: {str(e)}'
+                },
+                'timestamp': timezone.now().isoformat()
+            }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+
+
+class SuperAdminConsultationManagementView(APIView):
+    """Dedicated API endpoint for SuperAdmin consultation management with advanced filtering"""
+    permission_classes = [IsAdminOrSuperAdmin]
+    
+    @extend_schema(
+        parameters=[
+            OpenApiParameter('page', OpenApiTypes.INT, description='Page number'),
+            OpenApiParameter('page_size', OpenApiTypes.INT, description='Number of items per page'),
+            OpenApiParameter('search', OpenApiTypes.STR, description='Search term for patient, doctor, clinic, or consultation ID'),
+            OpenApiParameter('status', OpenApiTypes.STR, description='Filter by consultation status'),
+            OpenApiParameter('payment_status', OpenApiTypes.STR, description='Filter by payment status'),
+            OpenApiParameter('clinic_id', OpenApiTypes.STR, description='Filter by clinic ID'),
+            OpenApiParameter('doctor_id', OpenApiTypes.STR, description='Filter by doctor ID'),
+            OpenApiParameter('start_date', OpenApiTypes.DATE, description='Filter consultations from this date (YYYY-MM-DD)'),
+            OpenApiParameter('end_date', OpenApiTypes.DATE, description='Filter consultations until this date (YYYY-MM-DD)'),
+            OpenApiParameter('ordering', OpenApiTypes.STR, description='Order by field (e.g., -scheduled_date, status)'),
+        ],
+        responses={200: ConsultationListSerializer(many=True)},
+        description="Get all consultations with advanced filtering for SuperAdmin"
+    )
+    def get(self, request):
+        """Get consultations with advanced filtering for SuperAdmin"""
+        try:
+            # Get query parameters
+            page = int(request.query_params.get('page', 1))
+            page_size = min(int(request.query_params.get('page_size', 50)), 100)  # Max 100 per page
+            search = request.query_params.get('search', '').strip()
+            status_filter = request.query_params.get('status', '').strip()
+            payment_status_filter = request.query_params.get('payment_status', '').strip()
+            clinic_id = request.query_params.get('clinic_id', '').strip()
+            doctor_id = request.query_params.get('doctor_id', '').strip()
+            start_date = request.query_params.get('start_date', '').strip()
+            end_date = request.query_params.get('end_date', '').strip()
+            ordering = request.query_params.get('ordering', '-scheduled_date,-scheduled_time')
+            
+            # Start with base queryset
+            queryset = Consultation.objects.select_related(
+                'patient', 'doctor', 'clinic'
+            ).prefetch_related(
+                'consultationdiagnosis_set',
+                'consultationvitalsigns_set',
+                'consultationattachment_set'
+            )
+            
+            # Apply search filter
+            if search:
+                search_query = Q(
+                    Q(patient__name__icontains=search) |
+                    Q(patient__phone__icontains=search) |
+                    Q(doctor__name__icontains=search) |
+                    Q(clinic__name__icontains=search) |
+                    Q(chief_complaint__icontains=search) |
+                    Q(id__icontains=search)
+                )
+                queryset = queryset.filter(search_query)
+            
+            # Apply status filter
+            if status_filter:
+                queryset = queryset.filter(status=status_filter)
+            
+            # Apply payment status filter
+            if payment_status_filter:
+                queryset = queryset.filter(payment_status=payment_status_filter)
+            
+            # Apply clinic filter
+            if clinic_id:
+                queryset = queryset.filter(clinic_id=clinic_id)
+            
+            # Apply doctor filter
+            if doctor_id:
+                queryset = queryset.filter(doctor_id=doctor_id)
+            
+            # Apply date range filters
+            if start_date:
+                try:
+                    start_date_obj = datetime.strptime(start_date, '%Y-%m-%d').date()
+                    queryset = queryset.filter(scheduled_date__gte=start_date_obj)
+                except ValueError:
+                    return Response({
+                        'success': False,
+                        'error': {
+                            'code': 'INVALID_DATE_FORMAT',
+                            'message': 'Invalid start_date format. Use YYYY-MM-DD'
+                        },
+                        'timestamp': timezone.now().isoformat()
+                    }, status=status.HTTP_400_BAD_REQUEST)
+            
+            if end_date:
+                try:
+                    end_date_obj = datetime.strptime(end_date, '%Y-%m-%d').date()
+                    queryset = queryset.filter(scheduled_date__lte=end_date_obj)
+                except ValueError:
+                    return Response({
+                        'success': False,
+                        'error': {
+                            'code': 'INVALID_DATE_FORMAT',
+                            'message': 'Invalid end_date format. Use YYYY-MM-DD'
+                        },
+                        'timestamp': timezone.now().isoformat()
+                    }, status=status.HTTP_400_BAD_REQUEST)
+            
+            # Apply ordering
+            queryset = queryset.order_by(ordering)
+            
+            # Calculate pagination
+            total_count = queryset.count()
+            start_index = (page - 1) * page_size
+            end_index = start_index + page_size
+            
+            # Get paginated results
+            consultations = queryset[start_index:end_index]
+            
+            # Serialize the data
+            serializer = ConsultationListSerializer(consultations, many=True)
+            
+            # Calculate pagination info
+            total_pages = (total_count + page_size - 1) // page_size
+            has_next = page < total_pages
+            has_previous = page > 1
+            
+            return Response({
+                'success': True,
+                'results': serializer.data,
+                'count': total_count,
+                'page': page,
+                'page_size': page_size,
+                'total_pages': total_pages,
+                'has_next': has_next,
+                'has_previous': has_previous,
+                'next': f"?page={page + 1}&page_size={page_size}" if has_next else None,
+                'previous': f"?page={page - 1}&page_size={page_size}" if has_previous else None,
+                'message': 'Consultations retrieved successfully',
+                'timestamp': timezone.now().isoformat()
+            }, status=status.HTTP_200_OK)
+            
+        except Exception as e:
+            return Response({
+                'success': False,
+                'error': {
+                    'code': 'FETCH_ERROR',
+                    'message': f'Error fetching consultations: {str(e)}'
                 },
                 'timestamp': timezone.now().isoformat()
             }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)

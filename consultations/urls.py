@@ -97,6 +97,11 @@ urlpatterns = [
          views.ConsultationManagementView.as_view(), 
          name='admin-consultation-management'),
     
+    # SuperAdmin consultation management with advanced filtering
+    path('superadmin/management/', 
+         views.SuperAdminConsultationManagementView.as_view(), 
+         name='superadmin-consultation-management'),
+    
     # Doctor consultations
     path('doctor/', include(doctor_router.urls)),
     
