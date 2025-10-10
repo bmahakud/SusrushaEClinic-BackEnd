@@ -301,27 +301,27 @@ class WPDFGenerator:
         else:
             self.c.drawString(30, y_pos, "No vital signs recorded")
 
-    def _draw_patient_history(self):
-        """Draw patient medical history section"""
-        y_pos = self.height - 210 # Reduced spacing from vital signs
-        self.c.setFillColor(self.heading_color)
-        self.c.setFont("Helvetica-Bold", 9)  # Slightly increased font size
-        self.c.drawString(30, y_pos, "PATIENT MEDICAL HISTORY")
-        y_pos -= 15  # Reduced spacing
-        
-        self.c.setFillColor(colors.black)
-        self.c.setFont("Helvetica", 8)  # Slightly increased font size
-        if self.prescription.patient_previous_history:
-            # Truncate long history to fit in smaller space
-            history_text = self.prescription.patient_previous_history[:120] + "..." if len(self.prescription.patient_previous_history) > 120 else self.prescription.patient_previous_history
-            self.c.drawString(30, y_pos, history_text)
-        else:
-            self.c.drawString(30, y_pos, "No previous medical history recorded")
-        y_pos -= 12  # Reduced spacing
-        return y_pos
+    # def _draw_patient_history(self):
+    #     """Draw patient medical history section"""
+    #     y_pos = self.height - 210 # Reduced spacing from vital signs
+    #     self.c.setFillColor(self.heading_color)
+    #     self.c.setFont("Helvetica-Bold", 9)  # Slightly increased font size
+    #     self.c.drawString(30, y_pos, "PATIENT MEDICAL HISTORY")
+    #     y_pos -= 15  # Reduced spacing
+    #     
+    #     self.c.setFillColor(colors.black)
+    #     self.c.setFont("Helvetica", 8)  # Slightly increased font size
+    #     if self.prescription.patient_previous_history:
+    #         # Truncate long history to fit in smaller space
+    #         history_text = self.prescription.patient_previous_history[:120] + "..." if len(self.prescription.patient_previous_history) > 120 else self.prescription.patient_previous_history
+    #         self.c.drawString(30, y_pos, history_text)
+    #     else:
+    #         self.c.drawString(30, y_pos, "No previous medical history recorded")
+    #     y_pos -= 12  # Reduced spacing
+    #     return y_pos
 
     def _draw_diagnosis(self):
-        y_pos = self.height - 250 # Reduced spacing from patient history
+        y_pos = self.height - 210 # Moved up to fill space left by removed patient history
         self.c.setFillColor(self.heading_color)
         self.c.setFont("Helvetica-Bold", 9)  # Slightly increased font size
         self.c.drawString(30, y_pos, "DIAGNOSIS")
@@ -353,7 +353,7 @@ class WPDFGenerator:
         return y_pos - 20
 
     def _draw_medication(self):
-        y_pos = self.height - 290 # Reduced spacing from diagnosis
+        y_pos = self.height - 250 # Moved up to fill space left by removed patient history
         
         # Draw Rx symbol and heading
         self.c.setFillColor(self.heading_color)
@@ -749,7 +749,7 @@ class WPDFGenerator:
         self._draw_header()
         self._draw_appointment_details()
         self._draw_vital_signs()
-        self._draw_patient_history()
+        # self._draw_patient_history()
         diagnosis_y = self._draw_diagnosis()
         self._draw_medication()  # This now includes tests and next visit inline
         

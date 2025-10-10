@@ -324,10 +324,10 @@ class ProfessionalPrescriptionPDFGenerator:
                 content.extend(self._create_info_section("VITAL SIGNS", vital_data, styles))
         
         # Patient History - Separate Section for Better Visibility
-        if self.prescription.patient_previous_history:
-            content.append(Paragraph("PATIENT MEDICAL HISTORY", section_style))
-            content.append(Paragraph(f"<b>Previous Medical History:</b> {self.prescription.patient_previous_history}", normal_style))
-            content.append(Spacer(1, 20))
+        # if self.prescription.patient_previous_history:
+        #     content.append(Paragraph("PATIENT MEDICAL HISTORY", section_style))
+        #     content.append(Paragraph(f"<b>Previous Medical History:</b> {self.prescription.patient_previous_history}", normal_style))
+        #     content.append(Spacer(1, 20))
         
         # Diagnosis
         if self.prescription.primary_diagnosis or self.prescription.clinical_classification:
