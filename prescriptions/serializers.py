@@ -40,7 +40,7 @@ class PrescriptionMedicationSerializer(serializers.ModelSerializer):
             'dosage_display', 'frequency', 'frequency_display',
             'timing', 'timing_display', 'custom_timing',
             'duration_days', 'duration_weeks', 'duration_months', 'is_continuous',
-            'special_instructions', 'notes', 'order',
+            'quantity', 'special_instructions', 'notes', 'order',
             'created_at', 'updated_at'
         ]
         read_only_fields = ['id', 'created_at', 'updated_at']

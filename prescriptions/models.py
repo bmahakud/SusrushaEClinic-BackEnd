@@ -209,6 +209,9 @@ class PrescriptionMedication(models.Model):
     duration_months = models.PositiveIntegerField(null=True, blank=True, help_text="Duration in months")
     is_continuous = models.BooleanField(default=False, help_text="Continue indefinitely")
     
+    # Quantity
+    quantity = models.CharField(max_length=100, blank=True, help_text="Quantity (e.g., 10 tablets, 1 bottle)")
+    
     # Special Instructions
     special_instructions = models.TextField(blank=True, help_text="Special instructions for this medication")
     notes = models.TextField(blank=True, help_text="Additional notes")

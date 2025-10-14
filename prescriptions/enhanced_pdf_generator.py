@@ -362,47 +362,73 @@ class WPDFGenerator:
         self.c.setFont("Helvetica-Bold", 9)  # Slightly increased font size for medications
         self.c.drawString(60, y_pos, "MEDICATIONS")
         
-        y_pos -= 20
+        y_pos -= 25
 
-        # Medications in tabular format without borders
+        # Medications in tabular format with horizontal lines only (matching image design)
         medications = self.prescription.medications.all().order_by('order')
         print(f"🔍 PDF Generator - Total medications found: {medications.count()}")
         for i, med in enumerate(medications):
             print(f"🔍 Medication {i+1}: {med.medicine_name} (ID: {med.id}, Order: {med.order})")
         
         if medications.exists():
-            # Table header
+            # Column positions (matching image layout)
+            col1_x = 40   # Medicine Name (wider)
+            col2_x = 180  # Dosage (M-A-E)
+            col3_x = 250  # Timing-Freq-Duration (Timing, Duration, Quantity)
+            
+            # Draw header row with horizontal line
             self.c.setFillColor(self.heading_color)
-            self.c.setFont("Helvetica-Bold", 8)
+            self.c.setFont("Helvetica-Bold", 9)
             
-            # Column positions
-            col1_x = 40  # Medicine Name
-            col2_x = 200 # Dosage
-            col3_x = 280 # Frequency
-            col4_x = 360 # Duration
-            
-            # Draw header row
-            self.c.drawString(col1_x, y_pos, "Medicine Name")
+            # Draw header text
+            self.c.drawString(col1_x, y_pos, "Medicine")
             self.c.drawString(col2_x, y_pos, "Dosage")
-            self.c.drawString(col3_x, y_pos, "Frequency")
-            self.c.drawString(col4_x, y_pos, "Duration")
+            self.c.drawString(col3_x, y_pos, "Timing - Freq. - Duration")
             
-            y_pos -= 15
+            # Draw horizontal line under header
+            self.c.setStrokeColor(self.line_color)
+            self.c.setLineWidth(0.5)
+            self.c.line(col1_x, y_pos - 3, self.width - 40, y_pos - 3)
             
-            # Draw medication rows
+            y_pos -= 20
+            
+            # Draw medication rows with horizontal lines
             self.c.setFillColor(colors.black)
             self.c.setFont("Helvetica", 8)
             
             for idx, med in enumerate(medications, 1):
-                # Medicine name (truncated if too long)
-                medicine_name = f"{idx}. {med.medicine_name or 'Medicine'}"
-                if len(medicine_name) > 20:
-                    medicine_name = medicine_name[:17] + "..."
+                # Medicine column - show medicine name, composition, and timing details
+                medicine_lines = []
                 
-                # Dosage format
+                # Medicine name
+                medicine_name = med.medicine_name or 'Medicine'
+                medicine_lines.append(medicine_name)
+                
+                # Composition if available
+                if med.composition:
+                    medicine_lines.append(med.composition)
+                
+                # Timing details (like in the image)
+                timing_details = []
+                if med.timing:
+                    timing_display = med.get_timing_display() if hasattr(med, 'get_timing_display') else med.timing
+                    timing_details.append(timing_display)
+                
+                # Add timing details to medicine column
+                if timing_details:
+                    medicine_lines.append(" | ".join(timing_details))
+                
+                # Notes if available
+                if med.special_instructions:
+                    medicine_lines.append(f"Notes: {med.special_instructions}")
+                
+                # Dosage column - M-A-E format
                 dosage = f"{med.morning_dose}-{med.afternoon_dose}-{med.evening_dose}"
                 
-                # Duration formatting
+                # Timing-Freq-Duration column - show timing, duration, quantity
+                timing_freq_duration = []
+                
+                # Duration
                 duration = ""
                 if med.duration_days:
                     duration = f"{med.duration_days} days"
@@ -413,18 +439,41 @@ class WPDFGenerator:
                 elif med.is_continuous:
                     duration = "Continuous"
                 
+                if duration:
+                    timing_freq_duration.append(duration)
+                
+                # Quantity removed from frontend - no longer displayed
+                
                 # Frequency
                 frequency = med.get_frequency_display() if hasattr(med, 'get_frequency_display') else (med.frequency or "")
-                if len(frequency) > 15:
-                    frequency = frequency[:12] + "..."
+                if frequency:
+                    timing_freq_duration.append(frequency)
                 
-                # Draw row data
-                self.c.drawString(col1_x, y_pos, medicine_name)
+                # Draw medicine column (multi-line)
+                medicine_y = y_pos
+                for line in medicine_lines:
+                    if len(line) > 45:  # Truncate long lines
+                        line = line[:42] + "..."
+                    self.c.drawString(col1_x, medicine_y, line)
+                    medicine_y -= 10
+                
+                # Draw dosage column
                 self.c.drawString(col2_x, y_pos, dosage)
-                self.c.drawString(col3_x, y_pos, frequency)
-                self.c.drawString(col4_x, y_pos, duration)
                 
-                y_pos -= 12
+                # Draw timing-freq-duration column
+                timing_freq_duration_text = " | ".join(timing_freq_duration)
+                if len(timing_freq_duration_text) > 35:
+                    timing_freq_duration_text = timing_freq_duration_text[:32] + "..."
+                self.c.drawString(col3_x, y_pos, timing_freq_duration_text)
+                
+                # Calculate next row position based on medicine column height
+                rows_needed = len(medicine_lines)
+                y_pos -= (rows_needed * 10) + 5  # Extra spacing between rows
+                
+                # Draw horizontal line between rows
+                self.c.setStrokeColor(self.line_color)
+                self.c.setLineWidth(0.5)
+                self.c.line(col1_x, y_pos + 3, self.width - 40, y_pos + 3)
                 
                 # Check for page break
                 if y_pos < 150:

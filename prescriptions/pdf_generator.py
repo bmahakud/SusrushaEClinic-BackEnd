@@ -349,12 +349,34 @@ class ProfessionalPrescriptionPDFGenerator:
         if self.prescription.medications.exists():
             content.append(Paragraph("PRESCRIBED MEDICATIONS", section_style))
             
-            med_headers = ['S.No.', 'Medicine Name', 'Composition', 'Dosage (M-A-N)', 'Frequency', 'Duration', 'Special Instructions']
+            # New table structure matching the image design
+            med_headers = ['Medicine', 'Dosage', 'Timing - Freq. - Duration']
             med_data = [med_headers]
             
             for idx, medication in enumerate(self.prescription.medications.all().order_by('order'), 1):
                 dosage = f"{medication.morning_dose}-{medication.afternoon_dose}-{medication.evening_dose}"
                 
+                # Medicine column - combine name, composition, and timing
+                medicine_info = []
+                medicine_info.append(medication.medicine_name)
+                if medication.composition:
+                    medicine_info.append(medication.composition)
+                
+                # Timing details
+                timing_display = medication.get_timing_display() if hasattr(medication, 'get_timing_display') else medication.timing
+                if timing_display:
+                    medicine_info.append(timing_display)
+                
+                # Special instructions
+                if medication.special_instructions:
+                    medicine_info.append(f"Notes: {medication.special_instructions}")
+                
+                medicine_text = "\n".join(medicine_info)
+                
+                # Timing-Freq-Duration column
+                timing_freq_duration = []
+                
+                # Duration
                 duration = ""
                 if medication.duration_days:
                     duration = f"{medication.duration_days} days"
@@ -365,31 +387,38 @@ class ProfessionalPrescriptionPDFGenerator:
                 elif medication.is_continuous:
                     duration = "Continue as advised"
                 
-                instructions = medication.special_instructions or medication.get_timing_display()
-                if medication.custom_timing:
-                    instructions += f" ({medication.custom_timing})"
+                if duration:
+                    timing_freq_duration.append(duration)
+                
+                # Quantity removed from frontend - no longer displayed
+                
+                # Frequency
+                frequency = medication.get_frequency_display() if hasattr(medication, 'get_frequency_display') else medication.frequency
+                if frequency:
+                    timing_freq_duration.append(frequency)
+                
+                timing_freq_duration_text = " | ".join(timing_freq_duration)
                 
                 med_data.append([
-                    str(idx),
-                    medication.medicine_name,
-                    medication.composition or 'N/A',
+                    medicine_text,
                     dosage,
-                    medication.get_frequency_display(),
-                    duration,
-                    instructions
+                    timing_freq_duration_text
                 ])
             
-            med_table = Table(med_data, colWidths=[0.5*inch, 1.8*inch, 1.5*inch, 1*inch, 1*inch, 1*inch, 1.5*inch])
+            # Updated table with horizontal lines only (no vertical borders)
+            med_table = Table(med_data, colWidths=[3*inch, 1*inch, 2.5*inch])
             med_table.setStyle(TableStyle([
                 ('FONTNAME', (0, 0), (-1, 0), 'Helvetica-Bold'),
                 ('FONTNAME', (0, 1), (-1, -1), 'Helvetica'),
-                ('FONTSIZE', (0, 0), (-1, -1), 8),
+                ('FONTSIZE', (0, 0), (-1, -1), 9),
                 ('VALIGN', (0, 0), (-1, -1), 'TOP'),
-                ('GRID', (0, 0), (-1, -1), 0.5, self.primary_color),
+                # Only horizontal lines - no vertical borders
+                ('LINEBELOW', (0, 0), (-1, 0), 0.5, self.primary_color),  # Header line
+                ('LINEBELOW', (0, 1), (-1, -1), 0.3, colors.grey),  # Row separator lines
                 ('BACKGROUND', (0, 0), (-1, 0), self.primary_color),
                 ('TEXTCOLOR', (0, 0), (-1, 0), colors.white),
                 ('ROWBACKGROUNDS', (0, 1), (-1, -1), [colors.white, self.light_gray]),
-                ('ALIGN', (0, 0), (0, -1), 'CENTER'),  # S.No. center aligned
+                ('ALIGN', (1, 0), (1, -1), 'CENTER'),  # Dosage column center aligned
             ]))
             content.append(med_table)
             content.append(Spacer(1, 15))
