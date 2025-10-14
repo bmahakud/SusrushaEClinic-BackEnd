@@ -37,11 +37,19 @@ def upload_existing_signatures():
     
     for profile in profiles_with_signatures:
         try:
-            if profile.signature and hasattr(profile.signature, 'path'):
-                local_path = profile.signature.path
+            if profile.signature:
+                # Try to get the path - handle both FileField and string paths
+                try:
+                    local_path = profile.signature.path
+                except Exception:
+                    # If path fails, construct it from MEDIA_ROOT and signature name
+                    local_path = os.path.join(settings.MEDIA_ROOT, str(profile.signature))
+                
+                # Get the signature name for the remote key
+                signature_name = str(profile.signature)
                 
                 if os.path.exists(local_path):
-                    remote_key = f"{settings.AWS_LOCATION}/{profile.signature.name}"
+                    remote_key = f"{settings.AWS_LOCATION}/{signature_name}"
                     
                     try:
                         # Upload file

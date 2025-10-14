@@ -196,10 +196,18 @@ def upload_doctor_signature_async(profile_id):
         )
         
         # Upload signature if it exists
-        if profile.signature and hasattr(profile.signature, 'path'):
-            local_path = profile.signature.path
+        if profile.signature:
+            # Try to get the path - handle both FileField and string paths
+            try:
+                local_path = profile.signature.path
+            except Exception:
+                # If path fails, construct it from MEDIA_ROOT and signature name
+                local_path = os.path.join(settings.MEDIA_ROOT, str(profile.signature))
+            
+            signature_name = str(profile.signature)
+            
             if os.path.exists(local_path):
-                remote_key = f"{settings.AWS_LOCATION}/{profile.signature.name}"
+                remote_key = f"{settings.AWS_LOCATION}/{signature_name}"
                 try:
                     s3_client.upload_file(local_path, settings.AWS_STORAGE_BUCKET_NAME, remote_key)
                     # Make file public
@@ -235,10 +243,18 @@ def upload_doctor_signature_sync(profile_id):
         )
         
         # Upload signature if it exists
-        if profile.signature and hasattr(profile.signature, 'path'):
-            local_path = profile.signature.path
+        if profile.signature:
+            # Try to get the path - handle both FileField and string paths
+            try:
+                local_path = profile.signature.path
+            except Exception:
+                # If path fails, construct it from MEDIA_ROOT and signature name
+                local_path = os.path.join(settings.MEDIA_ROOT, str(profile.signature))
+            
+            signature_name = str(profile.signature)
+            
             if os.path.exists(local_path):
-                remote_key = f"{settings.AWS_LOCATION}/{profile.signature.name}"
+                remote_key = f"{settings.AWS_LOCATION}/{signature_name}"
                 try:
                     s3_client.upload_file(local_path, settings.AWS_STORAGE_BUCKET_NAME, remote_key)
                     # Make file public
