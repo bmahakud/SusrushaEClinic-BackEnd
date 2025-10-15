@@ -229,6 +229,16 @@ class PrescriptionMedication(models.Model):
         verbose_name_plural = 'Prescription Medications'
         ordering = ['order', 'created_at']
 
+    def get_timing_display(self):
+        """Get human-readable timing display"""
+        timing_map = dict(self.TIMING_CHOICES)
+        return timing_map.get(self.timing, self.timing)
+    
+    def get_frequency_display(self):
+        """Get human-readable frequency display"""
+        frequency_map = dict(self.FREQUENCY_CHOICES)
+        return frequency_map.get(self.frequency, self.frequency)
+
     def __str__(self):
         return f"{self.medicine_name} - {self.prescription}"
 
