@@ -38,7 +38,7 @@ class PrescriptionMedicationSerializer(serializers.ModelSerializer):
             'id', 'medicine_name', 'composition', 'dosage_form',
             'morning_dose', 'afternoon_dose', 'evening_dose',
             'dosage_display', 'frequency', 'frequency_display',
-            'timing', 'timing_display', 'custom_timing',
+            'timing', 'timing_display', 'custom_timing', 'timing_display_text',
             'duration_days', 'duration_weeks', 'duration_months', 'is_continuous',
             'quantity', 'special_instructions', 'notes', 'order',
             'created_at', 'updated_at'
@@ -51,6 +51,11 @@ class PrescriptionMedicationSerializer(serializers.ModelSerializer):
     
     def get_timing_display(self, obj):
         """Get human-readable timing"""
+        # Use timing_display_text if available (for compound labels)
+        if obj.timing_display_text:
+            return obj.timing_display_text
+        
+        # Fall back to single timing for backward compatibility
         timing_map = dict(PrescriptionMedication.TIMING_CHOICES)
         return timing_map.get(obj.timing, obj.timing)
     

@@ -466,7 +466,10 @@ class WPDFGenerator:
                     duration_freq_instructions.append(frequency)
                 
                 # Timing details (moved from medicine column)
-                if med.timing:
+                # Use timing_display_text if available, otherwise fall back to single timing
+                if hasattr(med, 'timing_display_text') and med.timing_display_text:
+                    duration_freq_instructions.append(med.timing_display_text)
+                elif med.timing:
                     timing_display = med.get_timing_display() if hasattr(med, 'get_timing_display') else med.timing
                     if timing_display:
                         duration_freq_instructions.append(timing_display)

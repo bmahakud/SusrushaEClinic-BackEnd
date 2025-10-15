@@ -202,6 +202,7 @@ class PrescriptionMedication(models.Model):
     frequency = models.CharField(max_length=20, choices=FREQUENCY_CHOICES, default='once_daily')
     timing = models.CharField(max_length=20, choices=TIMING_CHOICES, default='after_breakfast')
     custom_timing = models.CharField(max_length=200, blank=True, help_text="Custom timing instructions")
+    timing_display_text = models.CharField(max_length=200, blank=True, help_text="Human-readable timing display text (e.g., Before Breakfast, Lunch & Dinner)")
     
     # Duration
     duration_days = models.PositiveIntegerField(null=True, blank=True, help_text="Duration in days")
