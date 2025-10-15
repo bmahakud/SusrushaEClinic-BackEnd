@@ -241,6 +241,12 @@ class WPDFGenerator:
 
     def _draw_appointment_details(self):
         y_pos = self.height - 130 # Starting position after header
+        
+        # Add horizontal line between header and patient details - positioned with proper spacing
+        self.c.setStrokeColor(self.line_color)
+        self.c.setLineWidth(0.5)
+        self.c.line(30, y_pos + 15, self.width - 30, y_pos + 15)
+        
         self.c.setFillColor(self.heading_color)
         self.c.setFont("Helvetica-Bold", 10)  # Slightly increased font size
         self.c.drawString(30, y_pos, "PATIENT DETAILS")
@@ -260,6 +266,12 @@ class WPDFGenerator:
 
     def _draw_vital_signs(self):
         y_pos = self.height - 170 # Reduced spacing from appointment details
+        
+        # Add horizontal line between patient details and vital signs - positioned with proper spacing
+        self.c.setStrokeColor(self.line_color)
+        self.c.setLineWidth(0.5)
+        self.c.line(30, y_pos + 15, self.width - 30, y_pos + 15)
+        
         self.c.setFillColor(self.heading_color)
         self.c.setFont("Helvetica-Bold", 10)  # Slightly increased font size
         self.c.drawString(30, y_pos, "VITAL SIGNS")
@@ -322,6 +334,12 @@ class WPDFGenerator:
 
     def _draw_diagnosis(self):
         y_pos = self.height - 210 # Moved up to fill space left by removed patient history
+        
+        # Add horizontal line between vital signs and diagnosis - positioned with proper spacing
+        self.c.setStrokeColor(self.line_color)
+        self.c.setLineWidth(0.5)
+        self.c.line(30, y_pos + 15, self.width - 30, y_pos + 15)
+        
         self.c.setFillColor(self.heading_color)
         self.c.setFont("Helvetica-Bold", 9)  # Slightly increased font size
         self.c.drawString(30, y_pos, "DIAGNOSIS")
@@ -355,6 +373,11 @@ class WPDFGenerator:
     def _draw_medication(self):
         y_pos = self.height - 250 # Moved up to fill space left by removed patient history
         
+        # Add horizontal line between diagnosis and medications - positioned with proper spacing
+        self.c.setStrokeColor(self.line_color)
+        self.c.setLineWidth(0.5)
+        self.c.line(30, y_pos + 15, self.width - 30, y_pos + 15)
+        
         # Draw Rx symbol and heading
         self.c.setFillColor(self.heading_color)
         self.c.setFont("Helvetica-Bold", 14)  # Larger font for Rx
@@ -368,13 +391,14 @@ class WPDFGenerator:
         medications = self.prescription.medications.all().order_by('order')
         print(f"🔍 PDF Generator - Total medications found: {medications.count()}")
         for i, med in enumerate(medications):
-            print(f"🔍 Medication {i+1}: {med.medicine_name} (ID: {med.id}, Order: {med.order})")
+            print(f"🔍 Medication {i+1}: '{med.medicine_name}' | Composition: '{med.composition}' | ID: {med.id}, Order: {med.order}")
+            print(f"🔍   Dosage: {med.morning_dose}-{med.afternoon_dose}-{med.evening_dose} | Timing: {med.timing}")
         
         if medications.exists():
             # Column positions (matching image layout)
             col1_x = 40   # Medicine Name (wider)
-            col2_x = 180  # Dosage (M-A-E)
-            col3_x = 250  # Timing-Freq-Duration (Timing, Duration, Quantity)
+            col2_x = 170  # Dosage (M-A-E) - reduced to give more space
+            col3_x = 230  # Duration-Freq-Instructions - reduced to give more space
             
             # Draw header row with horizontal line
             self.c.setFillColor(self.heading_color)
@@ -383,7 +407,7 @@ class WPDFGenerator:
             # Draw header text
             self.c.drawString(col1_x, y_pos, "Medicine")
             self.c.drawString(col2_x, y_pos, "Dosage")
-            self.c.drawString(col3_x, y_pos, "Timing - Freq. - Duration")
+            self.c.drawString(col3_x, y_pos, "Duration - Freq. - Instructions")
             
             # Draw horizontal line under header
             self.c.setStrokeColor(self.line_color)
@@ -397,36 +421,30 @@ class WPDFGenerator:
             self.c.setFont("Helvetica", 8)
             
             for idx, med in enumerate(medications, 1):
-                # Medicine column - show medicine name, composition, and timing details
+                # Medicine column - show medicine name only
                 medicine_lines = []
                 
-                # Medicine name
+                # Medicine name - clean up any duplicate text within the field itself
                 medicine_name = med.medicine_name or 'Medicine'
-                medicine_lines.append(medicine_name)
+                medicine_name_lines = medicine_name.split('\n')
+                # Remove duplicates while preserving order
+                seen = set()
+                unique_lines = []
+                for line in medicine_name_lines:
+                    line = line.strip()
+                    if line and line not in seen:
+                        seen.add(line)
+                        unique_lines.append(line)
                 
-                # Composition if available
-                if med.composition:
-                    medicine_lines.append(med.composition)
-                
-                # Timing details (like in the image)
-                timing_details = []
-                if med.timing:
-                    timing_display = med.get_timing_display() if hasattr(med, 'get_timing_display') else med.timing
-                    timing_details.append(timing_display)
-                
-                # Add timing details to medicine column
-                if timing_details:
-                    medicine_lines.append(" | ".join(timing_details))
-                
-                # Notes if available
-                if med.special_instructions:
-                    medicine_lines.append(f"Notes: {med.special_instructions}")
+                # Add first unique line only - no composition or other details
+                if unique_lines:
+                    medicine_lines.append(unique_lines[0])
                 
                 # Dosage column - M-A-E format
                 dosage = f"{med.morning_dose}-{med.afternoon_dose}-{med.evening_dose}"
                 
-                # Timing-Freq-Duration column - show timing, duration, quantity
-                timing_freq_duration = []
+                # Duration-Freq-Instructions column - show duration, frequency, timing, and instructions
+                duration_freq_instructions = []
                 
                 # Duration
                 duration = ""
@@ -440,14 +458,22 @@ class WPDFGenerator:
                     duration = "Continuous"
                 
                 if duration:
-                    timing_freq_duration.append(duration)
-                
-                # Quantity removed from frontend - no longer displayed
+                    duration_freq_instructions.append(duration)
                 
                 # Frequency
                 frequency = med.get_frequency_display() if hasattr(med, 'get_frequency_display') else (med.frequency or "")
                 if frequency:
-                    timing_freq_duration.append(frequency)
+                    duration_freq_instructions.append(frequency)
+                
+                # Timing details (moved from medicine column)
+                if med.timing:
+                    timing_display = med.get_timing_display() if hasattr(med, 'get_timing_display') else med.timing
+                    if timing_display:
+                        duration_freq_instructions.append(timing_display)
+                
+                # Special instructions
+                if med.special_instructions:
+                    duration_freq_instructions.append(med.special_instructions)
                 
                 # Draw medicine column (multi-line)
                 medicine_y = y_pos
@@ -460,20 +486,30 @@ class WPDFGenerator:
                 # Draw dosage column
                 self.c.drawString(col2_x, y_pos, dosage)
                 
-                # Draw timing-freq-duration column
-                timing_freq_duration_text = " | ".join(timing_freq_duration)
-                if len(timing_freq_duration_text) > 35:
-                    timing_freq_duration_text = timing_freq_duration_text[:32] + "..."
-                self.c.drawString(col3_x, y_pos, timing_freq_duration_text)
+                # Draw duration-freq-instructions column
+                duration_freq_instructions_text = " | ".join(duration_freq_instructions)
+                if len(duration_freq_instructions_text) > 50:  # Increased from 35
+                    duration_freq_instructions_text = duration_freq_instructions_text[:47] + "..."
+                self.c.drawString(col3_x, y_pos, duration_freq_instructions_text)
                 
-                # Calculate next row position based on medicine column height
+                # Calculate row height first
                 rows_needed = len(medicine_lines)
-                y_pos -= (rows_needed * 10) + 5  # Extra spacing between rows
+                row_height = rows_needed * 10
                 
-                # Draw horizontal line between rows
+                # Move y_pos down to account for the content we just drew
+                y_pos -= row_height
+                
+                # Add spacing below content before drawing line
+                y_pos -= 8  # Space below content
+                
+                # Draw horizontal line centered between rows
                 self.c.setStrokeColor(self.line_color)
                 self.c.setLineWidth(0.5)
-                self.c.line(col1_x, y_pos + 3, self.width - 40, y_pos + 3)
+                line_y = y_pos
+                self.c.line(col1_x, line_y, self.width - 40, line_y)
+                
+                # Add spacing below line for next row
+                y_pos -= 8  # Space below line
                 
                 # Check for page break
                 if y_pos < 150:
@@ -668,6 +704,11 @@ class WPDFGenerator:
             self._draw_header()  # Redraw header on new page
             y_pos = self.height - 200  # Reset position for new page
         
+        # Add horizontal line between medications and advice/instructions - positioned with proper spacing
+        self.c.setStrokeColor(self.line_color)
+        self.c.setLineWidth(0.5)
+        self.c.line(30, y_pos + 15, self.width - 30, y_pos + 15)
+        
         self.c.setFillColor(self.heading_color)
         self.c.setFont("Helvetica-Bold", 10)
         self.c.drawString(30, y_pos, "ADVICE/ INSTRUCTIONS")
@@ -794,6 +835,9 @@ class WPDFGenerator:
         self.c.rect(0, 0, self.width, 80, fill=True, stroke=False)
 
     def generate_pdf(self):
+        # Debug marker to confirm our generator is being used
+        print("🚀 USING ENHANCED PDF GENERATOR - VERSION WITH FIXES")
+        
         # Single page prescription - everything on one page
         self._draw_header()
         self._draw_appointment_details()
@@ -839,8 +883,10 @@ class WPDFGenerator:
         if self.logo_path:
             pdf_instance.header_image = self.logo_path
         
-        # Save the PDF file
-        filename = f"prescription_{self.prescription.id}_v{pdf_instance.version_number or 1}.pdf"
+        # Save the PDF file with timestamp to force regeneration
+        import time
+        timestamp = int(time.time())
+        filename = f"prescription_{self.prescription.id}_v{pdf_instance.version_number or 1}_{timestamp}.pdf"
         pdf_instance.pdf_file.save(
             filename,
             BytesIO(pdf_data),
