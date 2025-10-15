@@ -170,15 +170,16 @@ class PrescriptionMedication(models.Model):
     ]
     
     TIMING_CHOICES = [
-        ('before_breakfast', 'Before Breakfast'),
+        ('with_food', 'After Food'),
+        ('before_breakfast', 'Before Food'),
+        ('empty_stomach', 'Empty Stomach'),
+        ('bedtime', 'Bedtime'),
+        # Legacy options for backward compatibility
         ('after_breakfast', 'After Breakfast'),
         ('before_lunch', 'Before Lunch'),
         ('after_lunch', 'After Lunch'),
         ('before_dinner', 'Before Dinner'),
         ('after_dinner', 'After Dinner'),
-        ('bedtime', 'Bedtime'),
-        ('empty_stomach', 'Empty Stomach'),
-        ('with_food', 'With Food'),
         ('custom', 'Custom'),
     ]
     
@@ -200,7 +201,7 @@ class PrescriptionMedication(models.Model):
     
     # Timing and Frequency
     frequency = models.CharField(max_length=20, choices=FREQUENCY_CHOICES, default='once_daily')
-    timing = models.CharField(max_length=20, choices=TIMING_CHOICES, default='after_breakfast')
+    timing = models.CharField(max_length=20, choices=TIMING_CHOICES, default='with_food')
     custom_timing = models.CharField(max_length=200, blank=True, help_text="Custom timing instructions")
     timing_display_text = models.CharField(max_length=200, blank=True, help_text="Human-readable timing display text (e.g., Before Breakfast, Lunch & Dinner)")
     
@@ -231,7 +232,19 @@ class PrescriptionMedication(models.Model):
         ordering = ['order', 'created_at']
 
     def get_timing_display(self):
-        """Get human-readable timing display"""
+        """Get human-readable timing display with legacy mapping"""
+        # Map legacy values to simplified labels
+        legacy_mapping = {
+            'after_breakfast': 'After Food',
+            'after_lunch': 'After Food',
+            'after_dinner': 'After Food',
+            'before_lunch': 'Before Food',
+            'before_dinner': 'Before Food',
+        }
+        
+        if self.timing in legacy_mapping:
+            return legacy_mapping[self.timing]
+        
         timing_map = dict(self.TIMING_CHOICES)
         return timing_map.get(self.timing, self.timing)
     
