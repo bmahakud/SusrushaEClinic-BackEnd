@@ -42,10 +42,10 @@ class WPDFGenerator:
         
         # Set up fallback logo URLs
         self.fallback_logo_urls = [
-            "https://sushrusaeclinic.com/sushrusa_logo_1-Photoroom.png",
-            "https://sushrusaeclinic.com/static/images/logo.png",
-            "https://sushrusaeclinic.com/media/logo.png",
-            "https://sushrusaeclinic.com/assets/logo.png"
+            "https://edrspace.sgp1.digitaloceanspaces.com/edrcontainer1/clinic_logos/sushrusa_logo_WB.png",
+            "https://sushrusaeclinic.com/media/clinic_logos/sushrusa_logo_WB.png",
+            "https://sushrusaeclinic.com/static/clinic_logos/sushrusa_logo_WB.png",
+            "https://sushrusaeclinic.com/sushrusa_logo_1-Photoroom.png"
         ]
 
         # Define colors based on image analysis
@@ -176,16 +176,36 @@ class WPDFGenerator:
         center_x = self.width / 2
         center_y = self.height - 50
         
-        # Try multiple logo paths
-        logo_paths = [
-            "/home/tushar/Videos/sushrusa_backend/media_cdn/clinic_logos/sushrusa_logo_WB.png",
-            "/home/tushar/Videos/sushrusa_backend/prescription_headers/test_prescription_header.png",
-            "/home/tushar/Videos/sushrusa_backend/media/clinic_logos/sushrusa_logo_WB.png"
-        ]
+        # Try multiple logo paths - use relative paths that work in both local and production
+        logo_paths = []
+        
+        # Use the provided logo path if available
+        if self.logo_path:
+            logo_paths.append(self.logo_path)
+        
+        # Try relative paths from Django settings
+        if settings.MEDIA_ROOT:
+            logo_paths.extend([
+                os.path.join(settings.MEDIA_ROOT, 'clinic_logos', 'sushrusa_logo_WB.png'),
+                os.path.join(settings.MEDIA_ROOT, 'prescription_headers', 'test_prescription_header.png')
+            ])
+        
+        # Try BASE_DIR paths
+        if settings.BASE_DIR:
+            logo_paths.extend([
+                os.path.join(settings.BASE_DIR, 'media_cdn', 'clinic_logos', 'sushrusa_logo_WB.png'),
+                os.path.join(settings.BASE_DIR, 'prescription_headers', 'test_prescription_header.png')
+            ])
+        
+        # Fallback to static files if STATIC_ROOT is available
+        if settings.STATIC_ROOT:
+            logo_paths.append(os.path.join(settings.STATIC_ROOT, 'clinic_logos', 'sushrusa_logo_WB.png'))
         
         logo_displayed = False
+        
+        # First try local file paths
         for logo_path in logo_paths:
-            if os.path.exists(logo_path):
+            if logo_path and os.path.exists(logo_path):
                 try:
                     center_logo = ImageReader(logo_path)
                     # Increased logo size for better visibility
@@ -194,11 +214,31 @@ class WPDFGenerator:
                     logo_x = center_x - (logo_width / 2)
                     logo_y = center_y - (logo_height / 2)
                     self.c.drawImage(center_logo, logo_x, logo_y, width=logo_width, height=logo_height, preserveAspectRatio=True, mask='auto')
-                    print(f"✅ Using logo in center: {logo_path}")
+                    print(f"✅ Using local logo: {logo_path}")
                     logo_displayed = True
                     break
                 except Exception as e:
-                    print(f"Center logo image error for {logo_path}: {e}")
+                    print(f"Local logo image error for {logo_path}: {e}")
+                    continue
+        
+        # If no local logo found, try downloading from URLs
+        if not logo_displayed:
+            for logo_url in self.fallback_logo_urls:
+                try:
+                    print(f"🔍 Trying to download logo from: {logo_url}")
+                    response = requests.get(logo_url, timeout=10)
+                    if response.status_code == 200:
+                        center_logo = ImageReader(BytesIO(response.content))
+                        logo_width = 160
+                        logo_height = 80
+                        logo_x = center_x - (logo_width / 2)
+                        logo_y = center_y - (logo_height / 2)
+                        self.c.drawImage(center_logo, logo_x, logo_y, width=logo_width, height=logo_height, preserveAspectRatio=True, mask='auto')
+                        print(f"✅ Using downloaded logo from: {logo_url}")
+                        logo_displayed = True
+                        break
+                except Exception as e:
+                    print(f"Failed to download logo from {logo_url}: {e}")
                     continue
         
         if not logo_displayed:
