@@ -89,36 +89,27 @@ class PatientMedicalRecordsView(APIView):
 
 
 class PatientProfileViewSet(ModelViewSet):
-    """ViewSet for patient profile management"""
-    queryset = PatientProfile.objects.all()
+    """ViewSet for patient profile management - now includes all patients even without profiles"""
+    queryset = User.objects.filter(role='patient')
     permission_classes = [permissions.IsAuthenticated]
     pagination_class = PatientPagination
     filter_backends = [DjangoFilterBackend, filters.SearchFilter, filters.OrderingFilter]
-    filterset_fields = ['blood_group']
-    search_fields = ['user__name', 'user__phone', 'user__email']
-    ordering_fields = ['created_at', 'user__name', 'date_of_birth']
-    ordering = ['-created_at']
+    filterset_fields = ['gender']
+    search_fields = ['name', 'phone', 'email']
+    ordering_fields = ['id', 'name']
+    ordering = ['-id']
     
     def get_object(self):
-        """Override to handle patient profile ID lookup"""
+        """Override to handle patient lookup by user ID"""
         patient_id = self.kwargs.get('pk')
         try:
-            # First try to find patient profile by its own ID (integer)
-            if patient_id.isdigit():
-                patient_profile = PatientProfile.objects.get(id=int(patient_id))
-                self.check_object_permissions(self.request, patient_profile)
-                return patient_profile
-        except (PatientProfile.DoesNotExist, ValueError):
-            pass
-        
-        try:
-            # If not found by ID, try to find by user ID (string)
-            patient_profile = PatientProfile.objects.get(user__id=patient_id)
-            self.check_object_permissions(self.request, patient_profile)
-            return patient_profile
-        except PatientProfile.DoesNotExist:
+            # Find user with role='patient' by ID
+            user = User.objects.get(id=patient_id, role='patient')
+            self.check_object_permissions(self.request, user)
+            return user
+        except User.DoesNotExist:
             from django.http import Http404
-            raise Http404("Patient profile not found")
+            raise Http404("Patient not found")
     
     def get_serializer_class(self):
         """Return appropriate serializer based on action"""
@@ -129,23 +120,38 @@ class PatientProfileViewSet(ModelViewSet):
         return PatientProfileSerializer
     
     def get_queryset(self):
-        """Filter queryset based on user role and custom filters"""
+        """Filter queryset based on user role and custom filters - now returns all patients including those without profiles"""
         user = self.request.user
-        queryset = PatientProfile.objects.select_related('user')
+        queryset = User.objects.filter(role='patient').select_related('patient_profile')
         
         if user.role == 'patient':
             # Patients can only see their own profile
-            return queryset.filter(user=user)
+            return queryset.filter(id=user.id)
         elif user.role == 'doctor':
             # Doctors can see patients they have consulted
             return queryset.filter(
-                user__patient_consultations__doctor=user
+                patient_consultations__doctor=user
             ).distinct()
         elif user.role in ['admin', 'superadmin']:
-            # Admins can see all patients
+            # Admins can see all patients (with or without profiles, active or inactive)
             pass
         else:
             return queryset.none()
+        
+        # Apply is_active filter if specified (default: show all)
+        is_active_param = self.request.query_params.get('is_active')
+        if is_active_param is not None:
+            is_active = is_active_param.lower() in ['true', '1', 'yes']
+            queryset = queryset.filter(is_active=is_active)
+        # If no is_active filter is provided, show both active and inactive patients
+        
+        # Apply profile_exists filter to show only patients with or without profiles
+        has_profile_param = self.request.query_params.get('has_profile')
+        if has_profile_param is not None:
+            if has_profile_param.lower() in ['true', '1', 'yes']:
+                queryset = queryset.filter(patient_profile__isnull=False)
+            else:
+                queryset = queryset.filter(patient_profile__isnull=True)
         
         # Apply custom filters
         city = self.request.query_params.get('city')
@@ -155,13 +161,13 @@ class PatientProfileViewSet(ModelViewSet):
         age_max = self.request.query_params.get('age_max')
         
         if city:
-            queryset = queryset.filter(user__city__icontains=city)
+            queryset = queryset.filter(city__icontains=city)
         
         if state:
-            queryset = queryset.filter(user__state__icontains=state)
+            queryset = queryset.filter(state__icontains=state)
         
         if gender:
-            queryset = queryset.filter(user__gender=gender)
+            queryset = queryset.filter(gender=gender)
         
         # Apply age filters
         if age_min or age_max:
@@ -169,11 +175,11 @@ class PatientProfileViewSet(ModelViewSet):
             
             if age_min:
                 max_birth_date = today - timedelta(days=int(age_min) * 365)
-                queryset = queryset.filter(user__date_of_birth__lte=max_birth_date)
+                queryset = queryset.filter(date_of_birth__lte=max_birth_date)
             
             if age_max:
                 min_birth_date = today - timedelta(days=(int(age_max) + 1) * 365)
-                queryset = queryset.filter(user__date_of_birth__gte=min_birth_date)
+                queryset = queryset.filter(date_of_birth__gte=min_birth_date)
         
         return queryset
     
@@ -193,8 +199,17 @@ class PatientProfileViewSet(ModelViewSet):
         }, status=status.HTTP_200_OK)
     
     @extend_schema(
+        parameters=[
+            OpenApiParameter('is_active', OpenApiTypes.BOOL, description='Filter by active status (true/false). If not specified, shows both active and inactive patients.'),
+            OpenApiParameter('has_profile', OpenApiTypes.BOOL, description='Filter by profile existence (true/false). If not specified, shows all patients with or without profiles.'),
+            OpenApiParameter('city', OpenApiTypes.STR, description='Filter by city'),
+            OpenApiParameter('state', OpenApiTypes.STR, description='Filter by state'),
+            OpenApiParameter('gender', OpenApiTypes.STR, description='Filter by gender'),
+            OpenApiParameter('age_min', OpenApiTypes.INT, description='Minimum age'),
+            OpenApiParameter('age_max', OpenApiTypes.INT, description='Maximum age'),
+        ],
         responses={200: PatientListSerializer(many=True)},
-        description="List all patients with pagination and filtering"
+        description="List all patients with pagination and filtering - now includes patients without PatientProfile"
     )
     def list(self, request):
         """List patients with pagination and filtering"""
@@ -812,9 +827,11 @@ class PatientSearchView(APIView):
             OpenApiParameter('age_max', OpenApiTypes.INT, description='Maximum age'),
             OpenApiParameter('city', OpenApiTypes.STR, description='City filter'),
             OpenApiParameter('state', OpenApiTypes.STR, description='State filter'),
+            OpenApiParameter('is_active', OpenApiTypes.BOOL, description='Filter by active status (true/false). If not specified, shows both active and inactive patients.'),
+            OpenApiParameter('has_profile', OpenApiTypes.BOOL, description='Filter by profile existence (true/false). If not specified, shows all patients with or without profiles.'),
         ],
         responses={200: PatientListSerializer(many=True)},
-        description="Search patients with advanced filters"
+        description="Search patients with advanced filters - now includes patients without PatientProfile"
     )
     def get(self, request):
         """Search patients with advanced filters"""
@@ -830,14 +847,14 @@ class PatientSearchView(APIView):
                 'timestamp': timezone.now().isoformat()
             }, status=status.HTTP_400_BAD_REQUEST)
         
-        # Build query
-        queryset = PatientProfile.objects.select_related('user')
+        # Build query - now using User objects instead of PatientProfile
+        queryset = User.objects.filter(role='patient').select_related('patient_profile')
         
         # Apply role-based filtering
         user = request.user
         if user.role == 'doctor':
             queryset = queryset.filter(
-                user__patient_consultations__doctor=user
+                patient_consultations__doctor=user
             ).distinct()
         elif user.role not in ['admin', 'superadmin']:
             return Response({
@@ -852,25 +869,40 @@ class PatientSearchView(APIView):
         # Apply search filters
         search_data = serializer.validated_data
         
+        # Apply is_active filter if specified (default: show all)
+        is_active_param = request.query_params.get('is_active')
+        if is_active_param is not None:
+            is_active = is_active_param.lower() in ['true', '1', 'yes']
+            queryset = queryset.filter(is_active=is_active)
+        # If no is_active filter is provided, show both active and inactive patients
+        
+        # Apply profile_exists filter
+        has_profile_param = request.query_params.get('has_profile')
+        if has_profile_param is not None:
+            if has_profile_param.lower() in ['true', '1', 'yes']:
+                queryset = queryset.filter(patient_profile__isnull=False)
+            else:
+                queryset = queryset.filter(patient_profile__isnull=True)
+        
         if search_data.get('query'):
             query = search_data['query']
             queryset = queryset.filter(
-                Q(user__name__icontains=query) |
-                Q(user__phone__icontains=query) |
-                Q(user__email__icontains=query)
+                Q(name__icontains=query) |
+                Q(phone__icontains=query) |
+                Q(email__icontains=query)
             )
         
         if search_data.get('gender'):
             queryset = queryset.filter(gender=search_data['gender'])
         
         if search_data.get('blood_group'):
-            queryset = queryset.filter(blood_group=search_data['blood_group'])
+            queryset = queryset.filter(patient_profile__blood_group=search_data['blood_group'])
         
         if search_data.get('city'):
-            queryset = queryset.filter(user__city__icontains=search_data['city'])
+            queryset = queryset.filter(city__icontains=search_data['city'])
         
         if search_data.get('state'):
-            queryset = queryset.filter(user__state__icontains=search_data['state'])
+            queryset = queryset.filter(state__icontains=search_data['state'])
         
         # Apply age filters
         if search_data.get('age_min') or search_data.get('age_max'):
@@ -928,25 +960,27 @@ class PatientStatsView(APIView):
             }, status=status.HTTP_403_FORBIDDEN)
         
         # Calculate statistics
-        total_patients = PatientProfile.objects.count()
+        total_patients = User.objects.filter(role='patient').count()
         
         # New patients this month
         this_month = timezone.now().replace(day=1, hour=0, minute=0, second=0, microsecond=0)
-        new_patients_this_month = PatientProfile.objects.filter(
-            created_at__gte=this_month
+        new_patients_this_month = User.objects.filter(
+            role='patient',
+            date_joined__gte=this_month
         ).count()
         
         # Active patients (had consultation in last 6 months)
         six_months_ago = timezone.now() - timedelta(days=180)
-        active_patients = PatientProfile.objects.filter(
-            user__patient_consultations__created_at__gte=six_months_ago
+        active_patients = User.objects.filter(
+            role='patient',
+            patient_consultations__created_at__gte=six_months_ago
         ).distinct().count()
         
         # Gender distribution
         gender_distribution = dict(
-            PatientProfile.objects.values('user__gender').annotate(
-                count=Count('user__gender')
-            ).values_list('user__gender', 'count')
+            User.objects.filter(role='patient').values('gender').annotate(
+                count=Count('gender')
+            ).values_list('gender', 'count')
         )
         
         # Age distribution
@@ -955,8 +989,8 @@ class PatientStatsView(APIView):
             '0-18': 0, '19-30': 0, '31-45': 0, '46-60': 0, '60+': 0
         }
         
-        for patient in PatientProfile.objects.filter(user__date_of_birth__isnull=False):
-            age = (today - patient.user.date_of_birth).days // 365
+        for patient in User.objects.filter(role='patient', date_of_birth__isnull=False):
+            age = (today - patient.date_of_birth).days // 365
             if age <= 18:
                 age_ranges['0-18'] += 1
             elif age <= 30:

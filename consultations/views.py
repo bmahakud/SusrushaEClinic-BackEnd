@@ -238,7 +238,7 @@ class ConsultationViewSet(ModelViewSet):
     def get_queryset(self):
         """Filter queryset based on user role"""
         user = self.request.user
-        queryset = Consultation.objects.select_related('patient', 'doctor', 'clinic')
+        queryset = Consultation.objects.select_related('patient', 'doctor', 'clinic', 'doctor__doctor_profile')
         
         if user.role == 'patient':
             # Patients can only see their own consultations
@@ -1087,7 +1087,7 @@ class SuperAdminConsultationManagementView(APIView):
             OpenApiParameter('end_date', OpenApiTypes.DATE, description='Filter consultations until this date (YYYY-MM-DD)'),
             OpenApiParameter('ordering', OpenApiTypes.STR, description='Order by field (e.g., -scheduled_date, status)'),
         ],
-        responses={200: ConsultationListSerializer(many=True)},
+        responses={200: ConsultationDetailSerializer(many=True)},
         description="Get all consultations with advanced filtering for SuperAdmin"
     )
     def get(self, request):
@@ -1107,7 +1107,7 @@ class SuperAdminConsultationManagementView(APIView):
             
             # Start with base queryset
             queryset = Consultation.objects.select_related(
-                'patient', 'doctor', 'clinic'
+                'patient', 'doctor', 'clinic', 'doctor__doctor_profile'
             ).prefetch_related(
                 'diagnoses',
                 'vital_signs',
@@ -1204,7 +1204,7 @@ class SuperAdminConsultationManagementView(APIView):
             consultations = queryset[start_index:end_index]
             
             # Serialize the data
-            serializer = ConsultationListSerializer(consultations, many=True)
+            serializer = ConsultationDetailSerializer(consultations, many=True)
             
             # Calculate pagination info
             total_pages = (total_count + page_size - 1) // page_size
@@ -1358,7 +1358,7 @@ class ConsultationSearchView(APIView):
             }, status=status.HTTP_400_BAD_REQUEST)
         
         # Build query
-        queryset = Consultation.objects.select_related('patient', 'doctor')
+        queryset = Consultation.objects.select_related('patient', 'doctor', 'doctor__doctor_profile')
         
         # Apply role-based filtering
         user = request.user
@@ -2043,7 +2043,7 @@ def test_consultation_list(request):
         now = timezone.now()
         
         # Get all consultations
-        consultations = Consultation.objects.select_related('patient', 'doctor', 'clinic').all()
+        consultations = Consultation.objects.select_related('patient', 'doctor', 'clinic', 'doctor__doctor_profile').all()
         
         # Filter upcoming consultations if requested
         upcoming_only = request.query_params.get('upcoming', '').lower() == 'true'
@@ -3192,7 +3192,7 @@ class ConsultationManagementView(APIView):
             
             # Build queryset
             queryset = Consultation.objects.select_related(
-                'patient', 'doctor', 'clinic'
+                'patient', 'doctor', 'clinic', 'doctor__doctor_profile'
             ).order_by('-scheduled_date', '-scheduled_time')
             
             # Apply filters

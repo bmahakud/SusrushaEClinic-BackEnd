@@ -10,6 +10,32 @@ from .models import (
 from utils.signed_urls import get_signed_media_url
 
 
+class FlexibleImageField(serializers.ImageField):
+    """Accepts either a file upload or a URL string.
+    - If a URL string is provided, the field is omitted from update so existing image is preserved.
+    - If a file is provided, it is validated and saved as usual.
+    """
+
+    def get_value(self, dictionary):
+        value = super().get_value(dictionary)
+        # If the incoming value is a non-empty string (URL), skip updating this field
+        if isinstance(value, str) and value.strip():
+            return serializers.empty
+        return value
+
+    def to_internal_value(self, data):
+        # If it's a string URL, return None so validators are skipped and field can be omitted later
+        if isinstance(data, str):
+            return None
+        return super().to_internal_value(data)
+
+    def run_validators(self, value):
+        # Skip validation when value is None (URL case)
+        if value is None:
+            return
+        super().run_validators(value)
+
+
 def validate_image_file(value):
     """Custom validator for image files"""
     # Check file size (20MB = 20 * 1024 * 1024 bytes)
@@ -67,7 +93,7 @@ class ClinicSerializer(serializers.ModelSerializer):
 
 class ClinicCreateSerializer(serializers.ModelSerializer):
     admin = serializers.PrimaryKeyRelatedField(queryset=User.objects.filter(role='admin'), required=True)
-    cover_image = serializers.ImageField(validators=[validate_image_file], required=False, allow_null=True)
+    cover_image = FlexibleImageField(validators=[validate_image_file], required=False, allow_null=True)
 
     class Meta:
         model = Clinic
@@ -113,6 +139,12 @@ class ClinicCreateSerializer(serializers.ModelSerializer):
         if queryset.exists():
             raise serializers.ValidationError("This admin is already assigned to another clinic.")
         return value
+
+    def update(self, instance, validated_data):
+        # If cover_image resolved to None (URL string case), don't touch existing image
+        if 'cover_image' in validated_data and validated_data['cover_image'] is None:
+            validated_data.pop('cover_image')
+        return super().update(instance, validated_data)
 
 
 class ClinicServiceSerializer(serializers.ModelSerializer):

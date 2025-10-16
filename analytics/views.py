@@ -117,11 +117,7 @@ class DashboardStatsView(APIView):
         
         # Calculate basic statistics
         total_users = User.objects.count()
-        total_patients = User.objects.filter(
-            role='patient',
-            patient_profile__isnull=False,
-            patient_profile__is_active=True
-        ).count()
+        total_patients = User.objects.filter(role='patient').count()
         total_doctors = User.objects.filter(role='doctor').count()
         total_consultations = Consultation.objects.count()
         total_prescriptions = Prescription.objects.count()
@@ -702,7 +698,7 @@ class SuperAdminOverviewStatsView(APIView):
         total_doctors = DoctorProfile.objects.count()
         active_doctors = DoctorProfile.objects.filter(is_active=True).count()
         total_admins = User.objects.filter(role='admin').count()
-        total_patients = PatientProfile.objects.count()
+        total_patients = User.objects.filter(role='patient').count()
         total_consultations = Consultation.objects.count()
         total_revenue = Payment.objects.filter(status='completed').aggregate(
             total=Sum('amount')
@@ -741,10 +737,11 @@ class SuperAdminOverviewStatsView(APIView):
         admin_change = this_month_admins - last_month_admins
         
         # Patients
-        this_month_patients = PatientProfile.objects.filter(created_at__gte=this_month_start).count()
-        last_month_patients = PatientProfile.objects.filter(
-            created_at__gte=last_month_start,
-            created_at__lt=this_month_start
+        this_month_patients = User.objects.filter(role='patient', date_joined__gte=this_month_start).count()
+        last_month_patients = User.objects.filter(
+            role='patient',
+            date_joined__gte=last_month_start,
+            date_joined__lt=this_month_start
         ).count()
         patient_change = this_month_patients - last_month_patients
         
@@ -900,7 +897,7 @@ class SuperAdminComprehensiveAnalyticsView(APIView):
             total_doctors = DoctorProfile.objects.count()
             active_doctors = DoctorProfile.objects.filter(is_active=True).count()
             total_admins = User.objects.filter(role='admin').count()
-            total_patients = PatientProfile.objects.count()
+            total_patients = User.objects.filter(role='patient').count()
             total_consultations = Consultation.objects.count()
             total_revenue = Payment.objects.filter(status='completed').aggregate(
                 total=Sum('amount')
@@ -1623,11 +1620,7 @@ class DetailedAnalyticsView(APIView):
             active_clinics = Clinic.objects.filter(is_active=True).count()
             total_doctors = User.objects.filter(role='doctor').count()
             active_doctors = User.objects.filter(role='doctor', is_active=True).count()
-            total_patients = User.objects.filter(
-            role='patient',
-            patient_profile__isnull=False,
-            patient_profile__is_active=True
-        ).count()
+            total_patients = User.objects.filter(role='patient').count()
             total_consultations = Consultation.objects.count()
             total_revenue = Payment.objects.filter(status='completed').aggregate(
                 total=Sum('amount')
