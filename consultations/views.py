@@ -812,11 +812,12 @@ class ConsultationViewSet(ModelViewSet):
             # OPTIMIZATION: Pre-fetch all existing consultations for this doctor and date
             # Use select_related to avoid N+1 queries and only fetch needed fields
             # Include completed consultations as they also block time slots
+            # IMPORTANT: We don't filter by clinic here - this checks ALL eclinics
             existing_consultations = Consultation.objects.filter(
                 doctor=doctor,
                 scheduled_date=date_obj,
                 status__in=['scheduled', 'in_progress', 'confirmed', 'completed']
-            ).only('scheduled_time', 'duration')
+            ).select_related('clinic').only('scheduled_time', 'duration', 'clinic__id', 'clinic__name')
             
             # OPTIMIZATION: Pre-fetch all booked slots for this doctor and date
             booked_slots = DoctorSlot.objects.filter(
@@ -825,19 +826,26 @@ class ConsultationViewSet(ModelViewSet):
                 is_booked=True
             ).only('start_time', 'end_time')
             
-            # OPTIMIZATION: Create a set of blocked time ranges for fast lookup
-            blocked_ranges = set()
+            # OPTIMIZATION: Create a dict of blocked time ranges with clinic information
+            blocked_ranges_with_info = {}
             
-            # Add consultation time ranges to blocked ranges
+            # Add consultation time ranges to blocked ranges with clinic info
             for consultation in existing_consultations:
                 start_time = consultation.scheduled_time
                 end_time = (datetime.combine(date_obj, start_time) + 
                            timedelta(minutes=consultation.duration)).time()
-                blocked_ranges.add((start_time, end_time))
+                blocked_ranges_with_info[(start_time, end_time)] = {
+                    'clinic_name': consultation.clinic.name if consultation.clinic else 'Unknown Clinic',
+                    'clinic_id': consultation.clinic.id if consultation.clinic else None
+                }
             
             # Add booked slot time ranges to blocked ranges
             for slot in booked_slots:
-                blocked_ranges.add((slot.start_time, slot.end_time))
+                if (slot.start_time, slot.end_time) not in blocked_ranges_with_info:
+                    blocked_ranges_with_info[(slot.start_time, slot.end_time)] = {
+                        'clinic_name': 'Booked',
+                        'clinic_id': None
+                    }
             
             # Get doctor's availability for the date
             available_slots = DoctorSlot.objects.filter(
@@ -874,24 +882,41 @@ class ConsultationViewSet(ModelViewSet):
                     
                     # Check if this slot overlaps with any blocked range
                     is_blocked = False
-                    for blocked_start, blocked_end in blocked_ranges:
+                    booked_clinic_info = None
+                    
+                    for (blocked_start, blocked_end), booking_info in blocked_ranges_with_info.items():
                         if (slot_start_time < blocked_end and slot_end_time_obj > blocked_start):
                             is_blocked = True
+                            booked_clinic_info = booking_info
                             break
                     
+                    # Create slot data for both available and blocked slots
+                    slot_data = {
+                        'start_time': slot_start_time.strftime('%H:%M'),
+                        'end_time': slot_end_time_obj.strftime('%H:%M'),
+                        'duration_minutes': consultation_duration,
+                        'clinic_name': clinic.name if clinic else 'Default Clinic',
+                        'doctor_name': doctor.name,
+                        'is_available': not is_blocked
+                    }
+                    
+                    # Add booking information if slot is blocked
+                    if is_blocked and booked_clinic_info:
+                        slot_data['booked_in_clinic'] = booked_clinic_info['clinic_name']
+                        slot_data['booked_clinic_id'] = booked_clinic_info['clinic_id']
+                        # Check if booked in a different clinic
+                        if clinic and booked_clinic_info['clinic_id'] and booked_clinic_info['clinic_id'] != clinic.id:
+                            slot_data['booked_in_different_clinic'] = True
+                        else:
+                            slot_data['booked_in_different_clinic'] = False
+                    
+                    calculated_slots.append(slot_data)
+                    
                     if not is_blocked:
-                        slot_data = {
-                            'start_time': slot_start_time.strftime('%H:%M'),
-                            'end_time': slot_end_time_obj.strftime('%H:%M'),
-                            'duration_minutes': consultation_duration,
-                            'clinic_name': clinic.name if clinic else 'Default Clinic',
-                            'doctor_name': doctor.name,
-                            'is_available': True
-                        }
-                        calculated_slots.append(slot_data)
-                        print(f"DEBUG: Created slot {slot_data['start_time']} - {slot_data['end_time']}")
+                        print(f"DEBUG: Created available slot {slot_data['start_time']} - {slot_data['end_time']}")
                     else:
-                        print(f"DEBUG: Blocked slot {slot_start_time.strftime('%H:%M')} - {slot_end_time_obj.strftime('%H:%M')}")
+                        booked_clinic = booked_clinic_info['clinic_name'] if booked_clinic_info else 'Unknown'
+                        print(f"DEBUG: Blocked slot {slot_start_time.strftime('%H:%M')} - {slot_end_time_obj.strftime('%H:%M')} (booked in {booked_clinic})")
                     
                     # Move to next slot
                     current_time = slot_end_time
