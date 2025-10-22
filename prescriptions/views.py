@@ -1110,6 +1110,102 @@ class InvestigationViewSet(viewsets.ModelViewSet):
             'data': serializer.data,
             'message': 'Tests retrieved successfully'
         })
+    
+    @action(detail=False, methods=['post'], url_path='auto-create')
+    def auto_create_test(self, request):
+        """Auto-create a new investigation test if it doesn't exist"""
+        test_name = request.data.get('name', '').strip()
+        category_id = request.data.get('category_id')
+        
+        if not test_name:
+            return Response({
+                'success': False,
+                'error': {
+                    'code': 'MISSING_NAME',
+                    'message': 'Test name is required'
+                },
+                'timestamp': timezone.now().isoformat()
+            }, status=status.HTTP_400_BAD_REQUEST)
+        
+        # Check if test already exists
+        existing_test = InvestigationTest.objects.filter(
+            name__iexact=test_name,
+            is_active=True
+        ).first()
+        
+        if existing_test:
+            return Response({
+                'success': True,
+                'data': {
+                    'test': InvestigationTestSerializer(existing_test).data,
+                    'source': 'existing'
+                },
+                'message': 'Test already exists in database',
+                'timestamp': timezone.now().isoformat()
+            }, status=status.HTTP_200_OK)
+        
+        # Get or create a default category if none provided
+        if category_id:
+            try:
+                category = InvestigationCategory.objects.get(id=category_id, is_active=True)
+            except InvestigationCategory.DoesNotExist:
+                category = None
+        else:
+            # Use "General" category or create it
+            category, created = InvestigationCategory.objects.get_or_create(
+                name='General',
+                defaults={
+                    'description': 'General investigation tests',
+                    'is_active': True,
+                    'order': 999
+                }
+            )
+        
+        if not category:
+            return Response({
+                'success': False,
+                'error': {
+                    'code': 'INVALID_CATEGORY',
+                    'message': 'Invalid category ID provided'
+                },
+                'timestamp': timezone.now().isoformat()
+            }, status=status.HTTP_400_BAD_REQUEST)
+        
+        # Create the new test
+        try:
+            new_test = InvestigationTest.objects.create(
+                category=category,
+                name=test_name,
+                code=test_name.upper().replace(' ', '_')[:20],  # Generate a simple code
+                description=f'Investigation test: {test_name}',
+                normal_range='To be determined',
+                unit='',
+                is_fasting_required=False,
+                preparation_instructions='Follow standard preparation guidelines',
+                estimated_cost=0.00,
+                is_active=True,
+                order=999
+            )
+            
+            return Response({
+                'success': True,
+                'data': {
+                    'test': InvestigationTestSerializer(new_test).data,
+                    'source': 'newly_created'
+                },
+                'message': 'Test created successfully',
+                'timestamp': timezone.now().isoformat()
+            }, status=status.HTTP_201_CREATED)
+            
+        except Exception as e:
+            return Response({
+                'success': False,
+                'error': {
+                    'code': 'CREATION_ERROR',
+                    'message': f'Failed to create test: {str(e)}'
+                },
+                'timestamp': timezone.now().isoformat()
+            }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
 
 
 class PrescriptionInvestigationViewSet(viewsets.ModelViewSet):
